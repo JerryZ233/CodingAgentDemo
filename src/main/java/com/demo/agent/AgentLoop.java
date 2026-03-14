@@ -2,9 +2,9 @@ package com.demo.agent;
 
 import com.demo.llm.LLMClient;
 import com.demo.model.Message;
-import com.demo.model.Tool;
 import com.demo.model.ToolCall;
 import com.demo.model.ToolResult;
+import com.demo.tools.Tool;
 import java.util.List;
 import java.util.Map;
 
@@ -38,8 +38,6 @@ public class AgentLoop {
     /**
      * Runs the agent loop until completion.
      * 
-     * Implementation idea:
-     * 
      * Loop (up to MAX_ITERATIONS):
      *   1. Send current conversation to LLM
      *   2. Get response (text + potential tool calls)
@@ -55,33 +53,28 @@ public class AgentLoop {
      * @param conversation The message history (modified in place)
      */
     public void run(List<Message> conversation) {
-        // TODO: implement the agent loop
-        
-        // Step 1: Prepare tool descriptions for the LLM
         String toolDescriptions = buildToolDescriptions();
         
-        // Main loop
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             System.out.println("\n=== Iteration " + (iteration + 1) + " ===");
             
-            // STEP 1: THINK - Send messages to LLM
-            // llmResponse = llmClient.sendMessage(conversation, toolDescriptions);
+            LLMClient.LLMResponse response = llmClient.sendMessage(conversation, toolDescriptions);
             
-            // STEP 2: DECIDE - Parse response
-            // if (!llmResponse.hasToolCalls()) {
-            //     // No tool calls, this is the final response
-            //     String finalText = llmResponse.getText();
-            //     conversation.add(Message.assistant(finalText));
-            //     System.out.println("Final response: " + finalText);
-            //     return; // DONE!
-            // }
+            if (response == null) {
+                System.out.println("Failed to get response from LLM.");
+                return;
+            }
             
-            // STEP 3: EXECUTE - Run each tool call
-            // for (ToolCall toolCall : llmResponse.getToolCalls()) {
-            //     executeToolCall(toolCall, conversation);
-            // }
+            if (!response.hasToolCalls()) {
+                String finalText = response.getText();
+                conversation.add(Message.assistant(finalText));
+                System.out.println("Final response: " + finalText);
+                return;
+            }
             
-            // STEP 4: OBSERVE - Loop continues, result already added to conversation
+            for (ToolCall toolCall : response.getToolCalls()) {
+                executeToolCall(toolCall, conversation);
+            }
         }
         
         System.out.println("Maximum iterations reached. Task may not be complete.");
@@ -90,21 +83,28 @@ public class AgentLoop {
     /**
      * Executes a single tool call and adds the result to conversation.
      * 
-     * Implementation idea:
+     * Implementation steps:
      * 1. Look up the tool by name from the tools map
      * 2. Call tool.execute() with the arguments
      * 3. Format the result as a message and add to conversation
      * 4. Handle errors gracefully
      */
     private void executeToolCall(ToolCall toolCall, List<Message> conversation) {
-        // TODO: implement
-        // Implementation steps:
-        // 1. Get tool name: String toolName = toolCall.getToolName();
-        // 2. Get tool from map: Tool tool = tools.get(toolName);
-        // 3. If tool not found: return error result
-        // 4. Execute: ToolResult result = tool.execute(toolCall.getArguments());
-        // 5. Format result as message: "Tool X returned: " + result.getOutput()
-        // 6. Add to conversation for next iteration
+        String toolName = toolCall.getToolName();
+        Tool tool = tools.get(toolName);
+        
+        String resultContent;
+        if (tool == null) {
+            resultContent = "Error: Tool '" + toolName + "' not found.";
+            System.out.println(resultContent);
+        } else {
+            ToolResult result = tool.execute(toolCall.getArguments());
+            resultContent = result.getOutput();
+            System.out.println("Tool '" + toolName + "' result: " + resultContent);
+        }
+        
+        String toolResultMessage = "Tool " + toolName + " returned: " + resultContent;
+        conversation.add(Message.user(toolResultMessage));
     }
     
     /**
@@ -112,25 +112,24 @@ public class AgentLoop {
      * This is typically a JSON schema describing each tool.
      */
     private String buildToolDescriptions() {
-        // TODO: implement
-        // Implementation idea:
-        // Return JSON array of tool definitions, e.g.:
-        // [
-        //   {
-        //     "type": "function",
-        //     "function": {
-        //       "name": "read_file",
-        //       "description": "Reads content from a file",
-        //       "parameters": {
-        //         "type": "object",
-        //         "properties": {
-        //           "path": {"type": "string", "description": "The file path"}
-        //         },
-        //         "required": ["path"]
-        //       }
-        //     }
-        //   }
-        // ]
-        return "[]";
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        boolean first = true;
+        for (Tool tool : tools.values()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            first = false;
+            sb.append("{");
+            sb.append("\"type\": \"function\", ");
+            sb.append("\"function\": {");
+            sb.append("\"name\": \"").append(tool.getName()).append("\", ");
+            sb.append("\"description\": \"").append(tool.getDescription()).append("\", ");
+            sb.append("\"parameters\": {\"type\": \"object\", \"properties\": {}}");
+            sb.append("}");
+            sb.append("}");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }

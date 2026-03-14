@@ -2,8 +2,11 @@ package com.demo.agent;
 
 import com.demo.llm.LLMClient;
 import com.demo.model.Message;
-import com.demo.model.ToolResult;
 import com.demo.tools.Tool;
+import com.demo.tools.ReadFileTool;
+import com.demo.tools.WriteFileTool;
+import com.demo.tools.ListFilesTool;
+import com.demo.tools.RunPythonTool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,18 +33,14 @@ public class CodingAgent {
      * Initializes the LLM client and registers available tools.
      */
     public CodingAgent() {
-        // Initialize LLM client with API credentials
-        // TODO: Load from configuration or environment variables
         this.llmClient = new LLMClient(
-            System.getenv("LLM_API_KEY"),  // e.g., OpenAI API key
-            System.getenv("LLM_API_URL")    // e.g., https://api.openai.com/v1/chat/completions
+            System.getenv("LLM_API_KEY"),
+            System.getenv("LLM_API_URL")
         );
         
-        // Register available tools
         this.tools = new HashMap<>();
         registerTools();
         
-        // Create the agent loop
         this.agentLoop = new AgentLoop(llmClient, tools);
     }
     
@@ -49,17 +48,16 @@ public class CodingAgent {
      * Registers all available tools that the agent can use.
      */
     private void registerTools() {
-        // TODO: Add tool instances
-        // tools.put("read_file", new ReadFileTool());
-        // tools.put("write_file", new WriteFileTool());
-        // tools.put("list_files", new ListFilesTool());
-        // tools.put("run_python", new RunPythonTool());
+        tools.put("read_file", new ReadFileTool());
+        tools.put("write_file", new WriteFileTool());
+        tools.put("list_files", new ListFilesTool());
+        tools.put("run_python", new RunPythonTool());
     }
     
     /**
      * Executes a user task using the agent loop.
      * 
-     * Implementation idea:
+     * Implementation steps:
      * 1. Create initial user message with the task
      * 2. Start the agent loop with the initial message
      * 3. Let the loop run until completion
@@ -70,14 +68,11 @@ public class CodingAgent {
     public void execute(String task) {
         System.out.println("Starting agent execution...");
         
-        // Create initial message
         Message initialMessage = Message.user(task);
         List<Message> conversation = new ArrayList<>();
         conversation.add(initialMessage);
         
-        // Run the agent loop
-        // TODO: Implement the loop execution
-        // agentLoop.run(conversation);
+        agentLoop.run(conversation);
         
         System.out.println("Agent execution completed.");
     }
