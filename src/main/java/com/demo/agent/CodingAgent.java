@@ -1,12 +1,13 @@
 package com.demo.agent;
 
 import com.demo.llm.LLMClient;
+import com.demo.llm.impl.DummyLLMClientImpl;
 import com.demo.model.Message;
 import com.demo.tools.Tool;
-import com.demo.tools.ReadFileTool;
-import com.demo.tools.WriteFileTool;
-import com.demo.tools.ListFilesTool;
-import com.demo.tools.RunPythonTool;
+import com.demo.tools.impl.DummyReadFileTool;
+import com.demo.tools.impl.DummyWriteFileTool;
+import com.demo.tools.impl.DummyListFilesTool;
+import com.demo.tools.impl.DummyRunPythonTool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,10 +34,7 @@ public class CodingAgent {
      * Initializes the LLM client and registers available tools.
      */
     public CodingAgent() {
-        this.llmClient = new LLMClient(
-            System.getenv("LLM_API_KEY"),
-            System.getenv("LLM_API_URL")
-        );
+        this.llmClient = new DummyLLMClientImpl();
         
         this.tools = new HashMap<>();
         registerTools();
@@ -48,10 +46,10 @@ public class CodingAgent {
      * Registers all available tools that the agent can use.
      */
     private void registerTools() {
-        tools.put("read_file", new ReadFileTool());
-        tools.put("write_file", new WriteFileTool());
-        tools.put("list_files", new ListFilesTool());
-        tools.put("run_python", new RunPythonTool());
+        tools.put("read_file", new DummyReadFileTool());
+        tools.put("write_file", new DummyWriteFileTool());
+        tools.put("list_files", new DummyListFilesTool());
+        tools.put("run_python", new DummyRunPythonTool());
     }
     
     /**
