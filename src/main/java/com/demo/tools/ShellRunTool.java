@@ -10,52 +10,66 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Tool for running Python code or scripts.
+ * Tool for running shell commands.
  * 
- * Input formats:
- * - {"code": "print('hello')"} - run inline code
- * - {"file": "script.py"} - run script file
+ * Input format:
+ * - {"command": "ls -la"} - run shell command
+ * - {"command": "python script.py", "shell": "bash"} - specify shell (optional)
+ * 
+ * Supported shells: bash, sh, cmd, powershell, python, node
  */
-public class PythonRunTool implements Tool {
+public class ShellRunTool implements Tool {
+
+    private static final Set<String> BLOCKED_COMMANDS = Set.of(
+        "rm -rf", "del /f /s", "format", "mkfs", "dd if=",
+        "shutdown", "reboot", "halt", "init 0", "kill -9",
+        "curl | sh", "wget | sh", "eval", "exec "
+    );
 
     private static final Set<String> BLOCKED_PATTERNS = Set.of(
         "..", "~", "Windows\\System32", "Windows\\SysWOW64",
-        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/"
+        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
+        ".ssh", ".git/config", "credentials", "secrets"
     );
 
     @Override
     public String getName() {
-        return "run_python";
+        return "run_shell";
     }
 
     @Override
     public String getDescription() {
-        return "Runs Python code or script. Input: {\"code\": \"print('hello')\"} or {\"file\": \"script.py\"}";
+        return "Runs a shell command. Input: {\"command\": \"ls -la\", \"shell\": \"bash\"}";
     }
 
     @Override
     public ToolResult execute(String args) {
-        String code = getValue(args, "code");
-        String file = getValue(args, "file");
+        String command = getValue(args, "command");
+        String shell = getValue(args, "shell");
 
-        List<String> command = new ArrayList<>();
-        if (code != null) {
-            String unescaped = unescape(code);
-            command.add("python");
-            command.add("-c");
-            command.add(unescaped);
-        } else if (file != null) {
-            // Security: Validate file path
-            if (isDangerousPath(file)) {
-                return ToolResult.error(getName(), "Security: Cannot run dangerous path: " + file);
-            }
-            command.add("python");
-            command.add(file);
-        } else {
-            return ToolResult.error(getName(), "Invalid input: neither 'code' nor 'file' provided.");
+        if (command == null || command.trim().isEmpty()) {
+            return ToolResult.error(getName(), "Missing 'command' in arguments");
         }
 
-        ProcessBuilder pb = new ProcessBuilder(command);
+        // Security: Check for dangerous commands
+        String lowerCmd = command.toLowerCase();
+        for (String blocked : BLOCKED_COMMANDS) {
+            if (lowerCmd.contains(blocked.toLowerCase())) {
+                return ToolResult.error(getName(), "Security: Blocked command: " + blocked);
+            }
+        }
+
+        // Security: Check for dangerous path patterns in command
+        for (String blocked : BLOCKED_PATTERNS) {
+            if (lowerCmd.contains(blocked.toLowerCase())) {
+                return ToolResult.error(getName(), "Security: Blocked pattern in command: " + blocked);
+            }
+        }
+
+        // Build command based on shell
+        List<String> cmdList = buildCommand(command, shell);
+
+        ProcessBuilder pb = new ProcessBuilder(cmdList);
         pb.redirectErrorStream(true);
 
         StringBuilder output = new StringBuilder();
@@ -72,7 +86,7 @@ public class PythonRunTool implements Tool {
             if (exitCode == 0) {
                 return ToolResult.success(getName(), output.toString());
             } else {
-                String errorMessage = "Python exited with code " + exitCode;
+                String errorMessage = "Command exited with code " + exitCode;
                 if (output.length() > 0) {
                     errorMessage += ". Output: " + output.toString();
                 }
@@ -82,6 +96,63 @@ public class PythonRunTool implements Tool {
             Thread.currentThread().interrupt();
             return ToolResult.error(getName(), "Execution failed: " + e.getMessage());
         }
+    }
+
+    private List<String> buildCommand(String command, String shellType) {
+        List<String> cmd = new ArrayList<>();
+
+        if (shellType != null) {
+            switch (shellType.toLowerCase()) {
+                case "bash":
+                case "sh":
+                    cmd.add("bash");
+                    cmd.add("-c");
+                    cmd.add(command);
+                    break;
+                case "cmd":
+                case "windows":
+                case "cmd.exe":
+                    cmd.add("cmd");
+                    cmd.add("/c");
+                    cmd.add(command);
+                    break;
+                case "powershell":
+                case "pwsh":
+                    cmd.add("powershell");
+                    cmd.add("-Command");
+                    cmd.add(command);
+                    break;
+                case "python":
+                    cmd.add("python");
+                    cmd.add("-c");
+                    cmd.add(command);
+                    break;
+                case "node":
+                    cmd.add("node");
+                    cmd.add("-e");
+                    cmd.add(command);
+                    break;
+                default:
+                    // Default shell
+                    cmd.add("sh");
+                    cmd.add("-c");
+                    cmd.add(command);
+            }
+        } else {
+            // Auto-detect: use platform default
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("windows")) {
+                cmd.add("cmd");
+                cmd.add("/c");
+                cmd.add(command);
+            } else {
+                cmd.add("sh");
+                cmd.add("-c");
+                cmd.add(command);
+            }
+        }
+
+        return cmd;
     }
 
     private boolean isDangerousPath(String path) {
@@ -138,28 +209,5 @@ public class PythonRunTool implements Tool {
             while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
             return json.substring(i, end).trim();
         }
-    }
-
-    private String unescape(String s) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char ch = s.charAt(i);
-            if (ch == '\\' && i + 1 < s.length()) {
-                char next = s.charAt(i + 1);
-                switch (next) {
-                    case 'n': sb.append('\n'); break;
-                    case 't': sb.append('\t'); break;
-                    case 'r': sb.append('\r'); break;
-                    case '"': sb.append('"'); break;
-                    case '\\': sb.append('\\'); break;
-                    case '\'': sb.append('\''); break;
-                    default: sb.append(next); break;
-                }
-                i++;
-            } else {
-                sb.append(ch);
-            }
-        }
-        return sb.toString();
     }
 }

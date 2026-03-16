@@ -7,7 +7,7 @@ import com.demo.tools.Tool;
 import com.demo.tools.FileReadTool;
 import com.demo.tools.FileWriteTool;
 import com.demo.tools.FileListTool;
-import com.demo.tools.PythonRunTool;
+import com.demo.tools.ShellRunTool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,7 +49,7 @@ public class CodingAgent {
         tools.put("read_file", new FileReadTool());
         tools.put("write_file", new FileWriteTool());
         tools.put("list_files", new FileListTool());
-        tools.put("run_python", new PythonRunTool());
+        tools.put("run_shell", new ShellRunTool());
     }
     
     /**
