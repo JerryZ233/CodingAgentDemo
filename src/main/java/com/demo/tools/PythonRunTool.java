@@ -7,8 +7,31 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
-public class PythonRunTool extends RunPythonTool {
+/**
+ * Tool for running Python code or scripts.
+ * 
+ * Input formats:
+ * - {"code": "print('hello')"} - run inline code
+ * - {"file": "script.py"} - run script file
+ */
+public class PythonRunTool implements Tool {
+
+    private static final Set<String> BLOCKED_PATTERNS = Set.of(
+        "..", "~", "Windows\\System32", "Windows\\SysWOW64",
+        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/"
+    );
+
+    @Override
+    public String getName() {
+        return "run_python";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Runs Python code or script. Input: {\"code\": \"print('hello')\"} or {\"file\": \"script.py\"}";
+    }
 
     @Override
     public ToolResult execute(String args) {
@@ -22,6 +45,10 @@ public class PythonRunTool extends RunPythonTool {
             command.add("-c");
             command.add(unescaped);
         } else if (file != null) {
+            // Security: Validate file path
+            if (isDangerousPath(file)) {
+                return ToolResult.error(getName(), "Security: Cannot run dangerous path: " + file);
+            }
             command.add("python");
             command.add(file);
         } else {
@@ -45,7 +72,7 @@ public class PythonRunTool extends RunPythonTool {
             if (exitCode == 0) {
                 return ToolResult.success(getName(), output.toString());
             } else {
-                String errorMessage = "Python process exited with code " + exitCode;
+                String errorMessage = "Python exited with code " + exitCode;
                 if (output.length() > 0) {
                     errorMessage += ". Output: " + output.toString();
                 }
@@ -55,6 +82,16 @@ public class PythonRunTool extends RunPythonTool {
             Thread.currentThread().interrupt();
             return ToolResult.error(getName(), "Execution failed: " + e.getMessage());
         }
+    }
+
+    private boolean isDangerousPath(String path) {
+        String lowerPath = path.toLowerCase();
+        for (String pattern : BLOCKED_PATTERNS) {
+            if (lowerPath.contains(pattern.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String getValue(String json, String key) {

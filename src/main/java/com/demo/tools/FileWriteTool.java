@@ -6,16 +6,19 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
 
-public class FileWriteTool extends WriteFileTool {
+/**
+ * Tool for writing content to files.
+ * 
+ * Security features:
+ * - Workspace confinement
+ * - Path traversal prevention
+ * - Dangerous path blocking
+ * - File extension whitelist
+ */
+public class FileWriteTool implements Tool {
 
-    /**
-     * Workspace root - files can only be written within this directory
-     */
     private final Path workspaceRoot;
 
-    /**
-     * Allowed file extensions (whitelist)
-     */
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
         ".java", ".kt", ".scala", ".py", ".js", ".ts", ".jsx", ".tsx",
         ".html", ".css", ".scss", ".json", ".xml", ".yaml", ".yml",
@@ -23,9 +26,6 @@ public class FileWriteTool extends WriteFileTool {
         ".gradle", ".kts", ".properties", ".env"
     );
 
-    /**
-     * Dangerous path patterns to block
-     */
     private static final Set<String> BLOCKED_PATTERNS = Set.of(
         "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
         "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
@@ -33,9 +33,18 @@ public class FileWriteTool extends WriteFileTool {
     );
 
     public FileWriteTool() {
-        // Set workspace to project root
         this.workspaceRoot = Paths.get(System.getProperty("user.dir", "."))
             .toAbsolutePath().normalize();
+    }
+
+    @Override
+    public String getName() {
+        return "write_file";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Writes content to a file. Input: {\"path\": \"file path\", \"content\": \"text\"}";
     }
 
     @Override
@@ -59,33 +68,32 @@ public class FileWriteTool extends WriteFileTool {
             Path path = Path.of(pathStr);
             Path absolutePath = path.toAbsolutePath().normalize();
 
-            // Security check 1: Workspace confinement
+            // Security: Workspace confinement
             if (!isWithinWorkspace(absolutePath)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot write outside workspace. Path: " + pathStr);
             }
 
-            // Security check 2: Path traversal prevention
+            // Security: Path traversal prevention
             if (pathStr.contains("..")) {
                 return ToolResult.error(getName(), 
                     "Security: Path traversal not allowed");
             }
 
-            // Security check 3: Block dangerous paths
+            // Security: Block dangerous paths
             if (isDangerousPath(absolutePath.toString())) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot write to dangerous path: " + pathStr);
             }
 
-            // Security check 4: File extension whitelist
+            // Security: File extension whitelist
             if (!isAllowedExtension(absolutePath.toString())) {
                 return ToolResult.error(getName(), 
                     "Security: File extension not allowed. Allowed: " + ALLOWED_EXTENSIONS);
             }
 
-            // Security check 5: Warn on overwrite
+            // Warn on overwrite
             if (Files.exists(absolutePath)) {
-                // For now, allow overwrite but log warning
                 System.out.println("WARNING: Overwriting existing file: " + absolutePath);
             }
 
@@ -105,16 +113,10 @@ public class FileWriteTool extends WriteFileTool {
         }
     }
 
-    /**
-     * Check if path is within workspace
-     */
     private boolean isWithinWorkspace(Path path) {
         return path.startsWith(workspaceRoot);
     }
 
-    /**
-     * Check if path contains dangerous patterns
-     */
     private boolean isDangerousPath(String path) {
         String lowerPath = path.toLowerCase();
         for (String pattern : BLOCKED_PATTERNS) {
@@ -125,9 +127,6 @@ public class FileWriteTool extends WriteFileTool {
         return false;
     }
 
-    /**
-     * Check if file extension is allowed
-     */
     private boolean isAllowedExtension(String path) {
         String lowerPath = path.toLowerCase();
         for (String ext : ALLOWED_EXTENSIONS) {

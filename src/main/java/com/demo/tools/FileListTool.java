@@ -6,16 +6,19 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
 
-public class FileListTool extends ListFilesTool {
+/**
+ * Tool for listing files in a directory.
+ * 
+ * Security features:
+ * - Workspace confinement
+ * - Path traversal prevention
+ * - Dangerous path blocking
+ * - Max 1000 files limit
+ */
+public class FileListTool implements Tool {
 
-    /**
-     * Workspace root - only list directories within this directory
-     */
     private final Path workspaceRoot;
 
-    /**
-     * Blocked path patterns for security
-     */
     private static final Set<String> BLOCKED_PATTERNS = Set.of(
         "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
         "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
@@ -25,6 +28,16 @@ public class FileListTool extends ListFilesTool {
     public FileListTool() {
         this.workspaceRoot = Paths.get(System.getProperty("user.dir", "."))
             .toAbsolutePath().normalize();
+    }
+
+    @Override
+    public String getName() {
+        return "list_files";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Lists files in a directory. Input: {\"path\": \"directory path\"}";
     }
 
     @Override
@@ -38,19 +51,19 @@ public class FileListTool extends ListFilesTool {
         try {
             Path absolutePath = dir.toPath().toAbsolutePath().normalize();
 
-            // Security check 1: Workspace confinement
+            // Security: Workspace confinement
             if (!isWithinWorkspace(absolutePath)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot list outside workspace. Path: " + path);
             }
 
-            // Security check 2: Path traversal prevention
+            // Security: Path traversal prevention
             if (path.contains("..")) {
                 return ToolResult.error(getName(), 
                     "Security: Path traversal not allowed");
             }
 
-            // Security check 3: Block dangerous paths
+            // Security: Block dangerous paths
             if (isDangerousPath(absolutePath.toString())) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot list dangerous path: " + path);
@@ -71,10 +84,9 @@ public class FileListTool extends ListFilesTool {
                 return ToolResult.error(getName(), "Unable to read directory listing: " + path);
             }
 
-            // Security check 4: Limit number of files (max 1000)
+            // Security: Limit number of files
             if (children.length > 1000) {
-                return ToolResult.error(getName(), 
-                    "Too many files in directory (max 1000): " + path);
+                return ToolResult.error(getName(), "Too many files (max 1000): " + path);
             }
 
             String listing = formatListing(children);

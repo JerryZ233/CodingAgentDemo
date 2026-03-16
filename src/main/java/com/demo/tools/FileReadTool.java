@@ -6,16 +6,19 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
 
-public class FileReadTool extends ReadFileTool {
+/**
+ * Tool for reading files from the filesystem.
+ * 
+ * Security features:
+ * - Workspace confinement (restricted to project directory)
+ * - Path traversal prevention
+ * - Dangerous path blocking
+ * - File size limit (max 1MB)
+ */
+public class FileReadTool implements Tool {
 
-    /**
-     * Workspace root - files can only be read from within this directory
-     */
     private final Path workspaceRoot;
 
-    /**
-     * Blocked path patterns for security
-     */
     private static final Set<String> BLOCKED_PATTERNS = Set.of(
         "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
         "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
@@ -29,6 +32,16 @@ public class FileReadTool extends ReadFileTool {
     }
 
     @Override
+    public String getName() {
+        return "read_file";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Reads content from a file. Input: {\"path\": \"file path\"}";
+    }
+
+    @Override
     public ToolResult execute(String args) {
         String path = extractPathFromJson(args);
         if (path == null || path.isEmpty()) {
@@ -39,35 +52,33 @@ public class FileReadTool extends ReadFileTool {
             Path filePath = Path.of(path);
             Path absolutePath = filePath.toAbsolutePath().normalize();
 
-            // Security check 1: Workspace confinement
+            // Security: Workspace confinement
             if (!isWithinWorkspace(absolutePath)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot read outside workspace. Path: " + path);
             }
 
-            // Security check 2: Path traversal prevention
+            // Security: Path traversal prevention
             if (path.contains("..")) {
                 return ToolResult.error(getName(), 
                     "Security: Path traversal not allowed");
             }
 
-            // Security check 3: Block dangerous paths
+            // Security: Block dangerous paths
             if (isDangerousPath(absolutePath.toString())) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot read dangerous path: " + path);
             }
 
-            // Security check 4: Must be a file (not directory)
+            // Security: Must be a file
             if (!Files.isRegularFile(absolutePath)) {
-                return ToolResult.error(getName(), 
-                    "Path is not a file: " + path);
+                return ToolResult.error(getName(), "Path is not a file: " + path);
             }
 
-            // Security check 5: File size limit (max 1MB)
+            // Security: File size limit (1MB)
             long fileSize = Files.size(absolutePath);
             if (fileSize > 1024 * 1024) {
-                return ToolResult.error(getName(), 
-                    "File too large (max 1MB): " + path);
+                return ToolResult.error(getName(), "File too large (max 1MB): " + path);
             }
 
             String content = Files.readString(absolutePath);
@@ -108,9 +119,8 @@ public class FileReadTool extends ReadFileTool {
         if (i >= json.length()) return null;
         char c = json.charAt(i);
         if (c == '"' || c == '\'') {
-            char quote = c;
             int start = i + 1;
-            int end = json.indexOf(quote, start);
+            int end = json.indexOf(c, start);
             if (end < 0) return null;
             return json.substring(start, end);
         } else {
