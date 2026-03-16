@@ -1,8 +1,6 @@
 package com.demo.tools;
 
-import com.demo.model.ToolResult;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+// Removed unused file reading imports after making this class abstract
 
 /**
  * Tool for reading files from the filesystem.
@@ -12,7 +10,7 @@ import java.nio.file.Paths;
  * 2. Use Java's Files.readAllBytes() or Files.readString() to read content
  * 3. Return the file content as a ToolResult
  */
-public class ReadFileTool implements Tool {
+public abstract class ReadFileTool implements Tool {
     
     @Override
     public String getName() {
@@ -24,15 +22,5 @@ public class ReadFileTool implements Tool {
         return "Reads content from a file. Input: {\"path\": \"file path\"}";
     }
     
-    @Override
-    public ToolResult execute(String args) {
-        // TODO: implement
-        // Implementation steps:
-        // 1. Parse JSON args to extract "path" field
-        // 2. Validate path exists and is readable
-        // 3. Read file content using Files.readString(Paths.get(path))
-        // 4. Return success with content, or error if failed
-        
-        return ToolResult.error(getName(), "Not implemented yet");
-    }
+    // execute(String) removed: to be implemented by concrete subclasses
 }

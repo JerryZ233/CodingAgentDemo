@@ -2,6 +2,7 @@ package com.demo.tools.impl;
 
 import com.demo.model.ToolResult;
 import com.demo.tools.Tool;
+import com.demo.tools.WriteFileTool;
 
 /**
  * Abstract implementation of Tool for writing content to files.
@@ -13,15 +14,7 @@ import com.demo.tools.Tool;
  * 3. Write content using Files.writeString()
  * 4. Return success confirmation or error
  */
-public abstract class WriteFileToolImpl implements Tool {
+public abstract class WriteFileToolImpl extends WriteFileTool {
     
-    @Override
-    public String getName() {
-        return "write_file";
-    }
-    
-    @Override
-    public String getDescription() {
-        return "Writes content to a file. Input: {\"path\": \"file path\", \"content\": \"text\"}";
-    }
+    // getName() and getDescription() are inherited from WriteFileTool
 }

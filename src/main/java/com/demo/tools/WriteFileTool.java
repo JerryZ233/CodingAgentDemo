@@ -1,8 +1,5 @@
 package com.demo.tools;
-
-import com.demo.model.ToolResult;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+// (Imports removed: no longer required in abstract base class)
 
 /**
  * Tool for writing content to files.
@@ -14,7 +11,7 @@ import java.nio.file.Paths;
  * 3. Write content using Files.writeString()
  * 4. Return success confirmation or error
  */
-public class WriteFileTool implements Tool {
+public abstract class WriteFileTool implements Tool {
     
     @Override
     public String getName() {
@@ -26,15 +23,5 @@ public class WriteFileTool implements Tool {
         return "Writes content to a file. Input: {\"path\": \"file path\", \"content\": \"text\"}";
     }
     
-    @Override
-    public ToolResult execute(String args) {
-        // TODO: implement
-        // Implementation steps:
-        // 1. Parse JSON args to extract "path" and "content" fields
-        // 2. Create parent directories using Files.createDirectories()
-        // 3. Write content using Files.writeString(Paths.get(path), content)
-        // 4. Return success message or error
-        
-        return ToolResult.error(getName(), "Not implemented yet");
-    }
+    // Abstract class: concrete tools will implement execute(...)
 }
