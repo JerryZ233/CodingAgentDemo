@@ -27,6 +27,7 @@ public class CodingAgent {
     private final LLMClient llmClient;
     private final Map<String, Tool> tools;
     private final AgentLoop agentLoop;
+    private Context conversation;
     
     /**
      * Creates a new coding agent.
@@ -40,6 +41,7 @@ public class CodingAgent {
         registerTools();
         
         this.agentLoop = new AgentLoop(llmClient, tools);
+        this.conversation = new Context();
     }
     
     /**
@@ -67,6 +69,44 @@ public class CodingAgent {
         agentLoop.run(conversation);
         
         System.out.println("Agent execution completed.");
+    }
+    
+    /**
+     * Executes a user task using the existing conversation history.
+     * 
+     * This method maintains conversation context across multiple calls,
+     * allowing for multi-turn conversations with the agent.
+     * 
+     * @param task The user's coding task
+     */
+    public void executeWithHistory(String task) {
+        System.out.println("Starting agent execution with history...");
+        
+        // Add user message to conversation context
+        conversation.addUserMessage(task);
+        
+        // Run agent loop with the conversation history
+        agentLoop.run(conversation.getMessages());
+        
+        System.out.println("Agent execution completed.");
+    }
+    
+    /**
+     * Returns the current conversation context.
+     * 
+     * @return The Context containing conversation history
+     */
+    public Context getConversation() {
+        return conversation;
+    }
+    
+    /**
+     * Sets the conversation context (e.g., to restore from a saved session).
+     * 
+     * @param conversation The Context to use
+     */
+    public void setConversation(Context conversation) {
+        this.conversation = conversation;
     }
     
     /**

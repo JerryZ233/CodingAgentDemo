@@ -1,5 +1,7 @@
 package com.demo.model;
 
+import com.demo.tools.JsonUtil;
+
 /**
  * Represents a message in the conversation with the LLM.
  * 
@@ -36,5 +38,55 @@ public class Message {
      */
     public static Message assistant(String content) {
         return new Message("assistant", content);
+    }
+    
+    /**
+     * Converts this message to a JSON string.
+     * 
+     * @return JSON representation of this message
+     */
+    public String toJson() {
+        return "{\"role\": \"" + escapeJson(role) + "\", \"content\": \"" + escapeJson(content) + "\"}";
+    }
+    
+    /**
+     * Parses a JSON string and creates a Message object.
+     * 
+     * @param json The JSON string to parse
+     * @return A new Message object, or null if parsing fails
+     */
+    public static Message fromJson(String json) {
+        if (json == null) return null;
+        
+        String role = JsonUtil.getString(json, "role");
+        String content = JsonUtil.getString(json, "content");
+        
+        if (role == null || content == null) return null;
+        
+        return new Message(role, content);
+    }
+    
+    /**
+     * Escapes special characters for JSON strings.
+     * 
+     * @param s The string to escape
+     * @return The escaped string
+     */
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default: sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 }
