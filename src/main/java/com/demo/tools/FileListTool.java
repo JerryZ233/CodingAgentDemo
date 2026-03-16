@@ -3,13 +3,11 @@ package com.demo.tools;
 import com.demo.model.ToolResult;
 import java.io.File;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Set;
 
 /**
  * Tool for listing files in a directory.
  * 
- * Security features:
+ * Security features (via SecurityUtil):
  * - Workspace confinement
  * - Path traversal prevention
  * - Dangerous path blocking
@@ -17,17 +15,7 @@ import java.util.Set;
  */
 public class FileListTool implements Tool {
 
-    private final Path workspaceRoot;
-
-    private static final Set<String> BLOCKED_PATTERNS = Set.of(
-        "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
-        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
-        ".ssh", ".git", "credentials", "secrets"
-    );
-
     public FileListTool() {
-        this.workspaceRoot = Paths.get(System.getProperty("user.dir", "."))
-            .toAbsolutePath().normalize();
     }
 
     @Override
@@ -42,7 +30,7 @@ public class FileListTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
-        String path = extractPathFromJson(args);
+        String path = JsonUtil.getString(args, "path");
         if (path == null || path.trim().isEmpty()) {
             return ToolResult.error(getName(), "Invalid or missing 'path' in arguments");
         }
@@ -52,19 +40,19 @@ public class FileListTool implements Tool {
             Path absolutePath = dir.toPath().toAbsolutePath().normalize();
 
             // Security: Workspace confinement
-            if (!isWithinWorkspace(absolutePath)) {
+            if (!SecurityUtil.isWithinWorkspace(absolutePath)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot list outside workspace. Path: " + path);
             }
 
             // Security: Path traversal prevention
-            if (path.contains("..")) {
+            if (SecurityUtil.hasPathTraversal(path)) {
                 return ToolResult.error(getName(), 
                     "Security: Path traversal not allowed");
             }
 
             // Security: Block dangerous paths
-            if (isDangerousPath(absolutePath.toString())) {
+            if (SecurityUtil.isDangerousPath(absolutePath.toString())) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot list dangerous path: " + path);
             }
@@ -96,44 +84,6 @@ public class FileListTool implements Tool {
         } catch (Exception e) {
             return ToolResult.error(getName(), "Error listing directory: " + e.getMessage());
         }
-    }
-
-    private boolean isWithinWorkspace(Path path) {
-        return path.startsWith(workspaceRoot);
-    }
-
-    private boolean isDangerousPath(String path) {
-        String lowerPath = path.toLowerCase();
-        for (String pattern : BLOCKED_PATTERNS) {
-            if (lowerPath.contains(pattern.toLowerCase())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String extractPathFromJson(String json) {
-        String key = "\"path\"";
-        int idx = json.indexOf(key);
-        if (idx == -1) {
-            key = "'path'";
-            idx = json.indexOf(key);
-        }
-        if (idx == -1) return null;
-        int colon = json.indexOf(':', idx);
-        if (colon == -1) return null;
-        String rest = json.substring(colon + 1).trim();
-        if (rest.startsWith("\"") && rest.endsWith("\"") && rest.length() >= 2) {
-            return rest.substring(1, rest.length() - 1);
-        }
-        if (rest.startsWith("'") && rest.endsWith("'") && rest.length() >= 2) {
-            return rest.substring(1, rest.length() - 1);
-        }
-        int comma = rest.indexOf(',');
-        if (comma != -1) {
-            return rest.substring(0, comma).trim();
-        }
-        return rest.trim();
     }
 
     private String formatListing(File[] children) {

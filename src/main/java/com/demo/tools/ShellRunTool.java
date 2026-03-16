@@ -17,6 +17,10 @@ import java.util.Set;
  * - {"command": "python script.py", "shell": "bash"} - specify shell (optional)
  * 
  * Supported shells: bash, sh, cmd, powershell, python, node
+ * 
+ * Security features:
+ * - Dangerous command blocking
+ * - Dangerous path pattern blocking
  */
 public class ShellRunTool implements Tool {
 
@@ -24,12 +28,6 @@ public class ShellRunTool implements Tool {
         "rm -rf", "del /f /s", "format", "mkfs", "dd if=",
         "shutdown", "reboot", "halt", "init 0", "kill -9",
         "curl | sh", "wget | sh", "eval", "exec "
-    );
-
-    private static final Set<String> BLOCKED_PATTERNS = Set.of(
-        "..", "~", "Windows\\System32", "Windows\\SysWOW64",
-        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
-        ".ssh", ".git/config", "credentials", "secrets"
     );
 
     @Override
@@ -44,26 +42,21 @@ public class ShellRunTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
-        String command = getValue(args, "command");
-        String shell = getValue(args, "shell");
+        String command = JsonUtil.getString(args, "command");
+        String shell = JsonUtil.getString(args, "shell");
 
         if (command == null || command.trim().isEmpty()) {
             return ToolResult.error(getName(), "Missing 'command' in arguments");
         }
 
         // Security: Check for dangerous commands
-        String lowerCmd = command.toLowerCase();
-        for (String blocked : BLOCKED_COMMANDS) {
-            if (lowerCmd.contains(blocked.toLowerCase())) {
-                return ToolResult.error(getName(), "Security: Blocked command: " + blocked);
-            }
+        if (SecurityUtil.isDangerousCommand(command)) {
+            return ToolResult.error(getName(), "Security: Blocked dangerous command detected");
         }
 
         // Security: Check for dangerous path patterns in command
-        for (String blocked : BLOCKED_PATTERNS) {
-            if (lowerCmd.contains(blocked.toLowerCase())) {
-                return ToolResult.error(getName(), "Security: Blocked pattern in command: " + blocked);
-            }
+        if (SecurityUtil.isDangerousPath(command)) {
+            return ToolResult.error(getName(), "Security: Blocked dangerous pattern in command");
         }
 
         // Build command based on shell
@@ -153,61 +146,5 @@ public class ShellRunTool implements Tool {
         }
 
         return cmd;
-    }
-
-    private boolean isDangerousPath(String path) {
-        String lowerPath = path.toLowerCase();
-        for (String pattern : BLOCKED_PATTERNS) {
-            if (lowerPath.contains(pattern.toLowerCase())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String getValue(String json, String key) {
-        if (json == null) return null;
-        int idx = json.indexOf("\"" + key + "\"");
-        if (idx < 0) return null;
-        int colon = json.indexOf(':', idx);
-        if (colon < 0) return null;
-        int i = colon + 1;
-        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-        if (i >= json.length()) return null;
-        char c = json.charAt(i);
-        if (c == '"') {
-            StringBuilder sb = new StringBuilder();
-            int end = i + 1;
-            boolean escaped = false;
-            while (end < json.length()) {
-                char ch = json.charAt(end);
-                if (escaped) {
-                    switch (ch) {
-                        case 'n': sb.append('\n'); break;
-                        case 't': sb.append('\t'); break;
-                        case 'r': sb.append('\r'); break;
-                        case '"': sb.append('"'); break;
-                        case '\\': sb.append('\\'); break;
-                        case '\'': sb.append('\''); break;
-                        default: sb.append(ch); break;
-                    }
-                    escaped = false;
-                } else {
-                    if (ch == '\\') {
-                        escaped = true;
-                    } else if (ch == '"') {
-                        return sb.toString();
-                    } else {
-                        sb.append(ch);
-                    }
-                }
-                end++;
-            }
-            return sb.toString();
-        } else {
-            int end = i;
-            while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
-            return json.substring(i, end).trim();
-        }
     }
 }
