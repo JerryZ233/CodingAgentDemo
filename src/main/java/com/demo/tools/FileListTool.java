@@ -2,8 +2,30 @@ package com.demo.tools;
 
 import com.demo.model.ToolResult;
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Set;
 
 public class FileListTool extends ListFilesTool {
+
+    /**
+     * Workspace root - only list directories within this directory
+     */
+    private final Path workspaceRoot;
+
+    /**
+     * Blocked path patterns for security
+     */
+    private static final Set<String> BLOCKED_PATTERNS = Set.of(
+        "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
+        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
+        ".ssh", ".git", "credentials", "secrets"
+    );
+
+    public FileListTool() {
+        this.workspaceRoot = Paths.get(System.getProperty("user.dir", "."))
+            .toAbsolutePath().normalize();
+    }
 
     @Override
     public ToolResult execute(String args) {
@@ -14,6 +36,26 @@ public class FileListTool extends ListFilesTool {
 
         File dir = new File(path);
         try {
+            Path absolutePath = dir.toPath().toAbsolutePath().normalize();
+
+            // Security check 1: Workspace confinement
+            if (!isWithinWorkspace(absolutePath)) {
+                return ToolResult.error(getName(), 
+                    "Security: Cannot list outside workspace. Path: " + path);
+            }
+
+            // Security check 2: Path traversal prevention
+            if (path.contains("..")) {
+                return ToolResult.error(getName(), 
+                    "Security: Path traversal not allowed");
+            }
+
+            // Security check 3: Block dangerous paths
+            if (isDangerousPath(absolutePath.toString())) {
+                return ToolResult.error(getName(), 
+                    "Security: Cannot list dangerous path: " + path);
+            }
+
             if (!dir.exists()) {
                 return ToolResult.error(getName(), "Path does not exist: " + path);
             }
@@ -29,6 +71,12 @@ public class FileListTool extends ListFilesTool {
                 return ToolResult.error(getName(), "Unable to read directory listing: " + path);
             }
 
+            // Security check 4: Limit number of files (max 1000)
+            if (children.length > 1000) {
+                return ToolResult.error(getName(), 
+                    "Too many files in directory (max 1000): " + path);
+            }
+
             String listing = formatListing(children);
             return ToolResult.success(getName(), listing);
         } catch (SecurityException se) {
@@ -36,6 +84,20 @@ public class FileListTool extends ListFilesTool {
         } catch (Exception e) {
             return ToolResult.error(getName(), "Error listing directory: " + e.getMessage());
         }
+    }
+
+    private boolean isWithinWorkspace(Path path) {
+        return path.startsWith(workspaceRoot);
+    }
+
+    private boolean isDangerousPath(String path) {
+        String lowerPath = path.toLowerCase();
+        for (String pattern : BLOCKED_PATTERNS) {
+            if (lowerPath.contains(pattern.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String extractPathFromJson(String json) {
