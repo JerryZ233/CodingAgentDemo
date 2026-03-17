@@ -1,7 +1,9 @@
 package com.demo.agent;
 
+import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.llm.impl.DummyLLMClientImpl;
+import com.demo.llm.impl.OpenAILLMClient;
 import com.demo.model.Message;
 import com.demo.tools.Tool;
 import com.demo.tools.FileReadTool;
@@ -30,12 +32,13 @@ public class CodingAgent {
     private Context conversation;
     
     /**
-     * Creates a new coding agent.
+     * Creates a new coding agent with the real LLM client.
      * 
-     * Initializes the LLM client and registers available tools.
+     * Initializes the LLM client from config and registers available tools.
+     * Uses OpenAILLMClient if API key is configured, otherwise falls back to Dummy.
      */
     public CodingAgent() {
-        this.llmClient = new DummyLLMClientImpl();
+        this.llmClient = createLLMClient();
         
         this.tools = new HashMap<>();
         registerTools();
@@ -45,6 +48,23 @@ public class CodingAgent {
         
         // Set tool descriptions on context
         this.conversation.setToolDescriptions(buildToolDescriptions());
+    }
+    
+    /**
+     * Creates the LLM client based on configuration.
+     * Uses OpenAI client if API key is configured, otherwise uses Dummy.
+     */
+    private LLMClient createLLMClient() {
+        Config config = Config.getInstance();
+        
+        if (config.isConfigured()) {
+            System.out.println("Using OpenAI client with model: " + config.getModel());
+            return new OpenAILLMClient();
+        } else {
+            System.out.println("API key not configured. Using Dummy client.");
+            System.out.println("To use real LLM, set LLM_API_KEY environment variable or configure in config.yaml");
+            return new DummyLLMClientImpl();
+        }
     }
     
     /**

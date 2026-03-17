@@ -50,6 +50,21 @@ public class DummyLLMClientImpl extends LLMClientImpl {
     }
     
     @Override
+    protected String getModel() {
+        return "dummy-model";
+    }
+    
+    @Override
+    protected int getMaxTokens() {
+        return 2048;
+    }
+    
+    @Override
+    protected double getTemperature() {
+        return 0.7;
+    }
+    
+    @Override
     public LLMResponse sendMessage(List<Message> messages, String toolsDescription) {
         if (returnToolCall) {
             List<ToolCall> toolCalls = new ArrayList<>();

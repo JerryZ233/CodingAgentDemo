@@ -1,0 +1,43 @@
+# LLM Configuration
+# Environment variables override these settings
+
+llm:
+  # API endpoint (OpenAI-compatible)
+  # Can be overridden by LLM_API_URL environment variable
+  api_url: "https://api.openai.com/v1/chat/completions"
+  
+  # Model name
+  # Can be overridden by LLM_MODEL environment variable
+  model: "gpt-4"
+  
+  # API key
+  # Can be overridden by LLM_API_KEY environment variable
+  # It's recommended to set this via environment variable for security
+  api_key: ""
+  
+  # Maximum tokens to generate
+  # Can be overridden by LLM_MAX_TOKENS environment variable
+  max_tokens: 2048
+  
+  # Temperature for response generation
+  # Can be overridden by LLM_TEMPERATURE environment variable
+  temperature: 0.7
+
+# Agent Configuration
+agent:
+  # Maximum iterations for agent loop
+  # Can be overridden by AGENT_MAX_ITERATIONS environment variable
+  max_iterations: 10
+  
+  # Workspace directory for file operations
+  # Can be overridden by WORKSPACE_DIR environment variable
+  workspace_dir: "."
+
+# Tool Configuration
+tools:
+  # Enable or disable specific tools
+  enabled:
+    - read_file
+    - write_file
+    - list_files
+    - run_shell
