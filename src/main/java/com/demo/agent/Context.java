@@ -1,6 +1,10 @@
 package com.demo.agent;
 
 import com.demo.model.Message;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -133,32 +137,24 @@ public class Context {
         
         StringBuilder sb = new StringBuilder();
         
-        // Parse the JSON array and extract tool info
-        // Expected format: [{"type": "function", "function": {"name": "xxx", "description": "xxx", ...}}, ...]
         try {
-            int idx = 0;
-            while (true) {
-                int nameStart = toolDescriptions.indexOf("\"name\":", idx);
-                if (nameStart == -1) break;
+            JsonArray toolsArray = JsonParser.parseString(toolDescriptions).getAsJsonArray();
+            
+            for (JsonElement element : toolsArray) {
+                JsonObject tool = element.getAsJsonObject();
                 
-                int nameValueStart = toolDescriptions.indexOf("\"", nameStart + 7);
-                if (nameValueStart == -1) break;
-                int nameValueEnd = toolDescriptions.indexOf("\"", nameValueStart + 1);
-                if (nameValueEnd == -1) break;
-                String toolName = toolDescriptions.substring(nameValueStart + 1, nameValueEnd);
-                
-                int descStart = toolDescriptions.indexOf("\"description\":", nameValueEnd);
-                if (descStart == -1) break;
-                
-                int descValueStart = toolDescriptions.indexOf("\"", descStart + 15);
-                if (descValueStart == -1) break;
-                int descValueEnd = toolDescriptions.indexOf("\"", descValueStart + 1);
-                if (descValueEnd == -1) break;
-                String toolDesc = toolDescriptions.substring(descValueStart + 1, descValueEnd);
-                
-                sb.append("- ").append(toolName).append(": ").append(toolDesc).append("\n");
-                
-                idx = descValueEnd + 1;
+                // Handle nested function format
+                if (tool.has("function")) {
+                    JsonObject function = tool.getAsJsonObject("function");
+                    String name = function.get("name").getAsString();
+                    String description = function.has("description") ? function.get("description").getAsString() : "";
+                    sb.append("- ").append(name).append(": ").append(description).append("\n");
+                } else {
+                    // Flat format
+                    String name = tool.has("name") ? tool.get("name").getAsString() : "";
+                    String description = tool.has("description") ? tool.get("description").getAsString() : "";
+                    sb.append("- ").append(name).append(": ").append(description).append("\n");
+                }
             }
         } catch (Exception e) {
             // If parsing fails, return raw descriptions

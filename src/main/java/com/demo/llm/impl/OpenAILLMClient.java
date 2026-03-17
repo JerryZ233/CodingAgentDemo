@@ -3,6 +3,10 @@ package com.demo.llm.impl;
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.model.ToolCall;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,28 +59,7 @@ public class OpenAILLMClient extends LLMClientImpl {
     }
     
     /**
-     * Parses the OpenAI API JSON response.
-     * 
-     * Expected response format:
-     * {
-     *   "choices": [
-     *     {
-     *       "message": {
-     *         "content": "text response",
-     *         "tool_calls": [
-     *           {
-     *             "id": "call_123",
-     *             "type": "function",
-     *             "function": {
-     *               "name": "tool_name",
-     *               "arguments": "{\"arg1\": \"value1\"}"
-     *             }
-     *           }
-     *         ]
-     *       }
-     *     }
-     *   ]
-     * }
+     * Parses the OpenAI API JSON response using Gson.
      */
     @Override
     protected LLMResponse parseResponse(String jsonResponse) {
@@ -85,16 +68,31 @@ public class OpenAILLMClient extends LLMClientImpl {
         }
         
         try {
-            // Extract text content
-            String text = extractJsonField(jsonResponse, "content");
-            if (text == null) {
-                text = "";
+            JsonObject root = JsonParser.parseString(jsonResponse).getAsJsonObject();
+            
+            // Extract text content from first choice
+            String text = "";
+            if (root.has("choices")) {
+                JsonArray choices = root.getAsJsonArray("choices");
+                if (choices != null && choices.size() > 0) {
+                    JsonObject firstChoice = choices.get(0).getAsJsonObject();
+                    if (firstChoice.has("message")) {
+                        JsonObject message = firstChoice.getAsJsonObject("message");
+                        if (message.has("content")) {
+                            text = message.get("content").getAsString();
+                        }
+                        
+                        // Extract tool calls from message
+                        if (message.has("tool_calls")) {
+                            List<ToolCall> toolCalls = extractToolCalls(message.getAsJsonArray("tool_calls"));
+                            return new LLMResponse(text, toolCalls);
+                        }
+                    }
+                }
             }
             
-            // Extract tool calls
-            List<ToolCall> toolCalls = extractToolCalls(jsonResponse);
+            return new LLMResponse(text, null);
             
-            return new LLMResponse(text, toolCalls);
         } catch (Exception e) {
             System.err.println("Failed to parse LLM response: " + e.getMessage());
             System.err.println("Response: " + jsonResponse);
@@ -103,126 +101,41 @@ public class OpenAILLMClient extends LLMClientImpl {
     }
     
     /**
-     * Extracts tool calls from the JSON response.
+     * Extracts tool calls from JSON array.
      */
-    private List<ToolCall> extractToolCalls(String json) {
+    private List<ToolCall> extractToolCalls(JsonArray toolCallsArray) {
         List<ToolCall> toolCalls = new ArrayList<>();
         
-        // Find "tool_calls" array
-        int toolCallsStart = json.indexOf("\"tool_calls\"");
-        if (toolCallsStart == -1) {
+        if (toolCallsArray == null) {
             return toolCalls;
         }
         
-        // Find the opening bracket of the array
-        int arrayStart = json.indexOf("[", toolCallsStart);
-        int arrayEnd = json.indexOf("]", toolCallsStart);
-        if (arrayStart == -1 || arrayEnd == -1) {
-            return toolCalls;
-        }
-        
-        String toolCallsArray = json.substring(arrayStart + 1, arrayEnd);
-        
-        // Parse each tool call object
-        int pos = 0;
-        while (pos < toolCallsArray.length()) {
-            int objStart = toolCallsArray.indexOf("{", pos);
-            if (objStart == -1 || objStart > arrayEnd) break;
-            
-            int objEnd = toolCallsArray.indexOf("}", objStart);
-            if (objEnd == -1) break;
-            
-            String toolCallObj = toolCallsArray.substring(objStart, objEnd + 1);
-            
-            // Extract function name and arguments
-            String functionName = extractFunctionName(toolCallObj);
-            String arguments = extractFunctionArguments(toolCallObj);
-            
-            if (functionName != null) {
-                toolCalls.add(new ToolCall(functionName, arguments));
+        for (JsonElement element : toolCallsArray) {
+            try {
+                JsonObject toolCall = element.getAsJsonObject();
+                
+                // Handle function format
+                if (toolCall.has("function")) {
+                    JsonObject function = toolCall.getAsJsonObject("function");
+                    String name = function.get("name").getAsString();
+                    
+                    String arguments = "{}";
+                    if (function.has("arguments")) {
+                        JsonElement args = function.get("arguments");
+                        if (args.isJsonObject()) {
+                            arguments = args.getAsJsonObject().toString();
+                        } else {
+                            arguments = args.getAsString();
+                        }
+                    }
+                    
+                    toolCalls.add(new ToolCall(name, arguments));
+                }
+            } catch (Exception e) {
+                // Skip invalid tool call
             }
-            
-            pos = objEnd + 1;
         }
         
         return toolCalls;
-    }
-    
-    /**
-     * Extracts function name from tool call object.
-     */
-    private String extractFunctionName(String toolCallObj) {
-        int funcStart = toolCallObj.indexOf("\"function\"");
-        if (funcStart == -1) return null;
-        
-        int nameStart = toolCallObj.indexOf("\"name\"", funcStart);
-        if (nameStart == -1) return null;
-        
-        return extractQuotedValue(toolCallObj, nameStart + 6);
-    }
-    
-    /**
-     * Extracts function arguments from tool call object.
-     */
-    private String extractFunctionArguments(String toolCallObj) {
-        int funcStart = toolCallObj.indexOf("\"function\"");
-        if (funcStart == -1) return "{}";
-        
-        int argsStart = toolCallObj.indexOf("\"arguments\"", funcStart);
-        if (argsStart == -1) return "{}";
-        
-        String args = extractQuotedValue(toolCallObj, argsStart + 12);
-        return args != null ? args : "{}";
-    }
-    
-    /**
-     * Extracts a quoted string value from JSON.
-     */
-    private String extractQuotedValue(String json, int afterIndex) {
-        int valueStart = json.indexOf("\"", afterIndex);
-        if (valueStart == -1) return null;
-        
-        // Skip escaped quotes
-        StringBuilder sb = new StringBuilder();
-        int i = valueStart + 1;
-        while (i < json.length()) {
-            char c = json.charAt(i);
-            if (c == '\\' && i + 1 < json.length()) {
-                sb.append(c);
-                sb.append(json.charAt(i + 1));
-                i += 2;
-            } else if (c == '"') {
-                return sb.toString();
-            } else {
-                sb.append(c);
-                i++;
-            }
-        }
-        return sb.toString();
-    }
-    
-    /**
-     * Extracts a field value from JSON using simple parsing.
-     */
-    private String extractJsonField(String json, String fieldName) {
-        String searchKey = "\"" + fieldName + "\"";
-        int keyIndex = json.indexOf(searchKey);
-        if (keyIndex == -1) return null;
-        
-        int colonIndex = json.indexOf(":", keyIndex);
-        if (colonIndex == -1) return null;
-        
-        int valueStart = colonIndex + 1;
-        while (valueStart < json.length() && Character.isWhitespace(json.charAt(valueStart))) {
-            valueStart++;
-        }
-        
-        if (valueStart >= json.length()) return null;
-        
-        if (json.charAt(valueStart) == '"') {
-            return extractQuotedValue(json, valueStart);
-        }
-        
-        return null;
     }
 }
