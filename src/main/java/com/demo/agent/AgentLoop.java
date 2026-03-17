@@ -39,10 +39,11 @@ public class AgentLoop {
      * Runs the agent loop until completion.
      * 
      * Loop (up to MAX_ITERATIONS):
-     *   1. Send current conversation to LLM
-     *   2. Get response (text + potential tool calls)
-     *   3. If text only (no tools): add to conversation, print result, DONE
-     *   4. If tool calls:
+     *   1. Build complete context using Context (system prompt + chat history)
+     *   2. Send messages to LLM with tool descriptions
+     *   3. Get response (text + potential tool calls)
+     *   4. If text only (no tools): add to conversation, print result, DONE
+     *   5. If tool calls:
      *        a. Add assistant message with tool call to conversation
      *        b. For each tool call:
      *             - Find the tool by name
@@ -50,15 +51,18 @@ public class AgentLoop {
      *             - Add tool result to conversation
      *        c. Continue to next iteration
      * 
-     * @param conversation The message history (modified in place)
+     * @param context The Context containing conversation history and configuration
      */
-    public void run(List<Message> conversation) {
-        String toolDescriptions = buildToolDescriptions();
+    public void run(Context context) {
+        String toolDescriptions = context.getToolDescriptions();
         
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             System.out.println("\n=== Iteration " + (iteration + 1) + " ===");
             
-            LLMClient.LLMResponse response = llmClient.sendMessage(conversation, toolDescriptions);
+            // Build complete messages including system prompt
+            List<Message> messages = context.buildMessagesForLLM();
+            
+            LLMClient.LLMResponse response = llmClient.sendMessage(messages, toolDescriptions);
             
             if (response == null) {
                 System.out.println("Failed to get response from LLM.");
@@ -67,13 +71,13 @@ public class AgentLoop {
             
             if (!response.hasToolCalls()) {
                 String finalText = response.getText();
-                conversation.add(Message.assistant(finalText));
+                context.addAssistantMessage(finalText);
                 System.out.println("Final response: " + finalText);
                 return;
             }
             
             for (ToolCall toolCall : response.getToolCalls()) {
-                executeToolCall(toolCall, conversation);
+                executeToolCall(toolCall, context);
             }
         }
         
@@ -89,7 +93,7 @@ public class AgentLoop {
      * 3. Format the result as a message and add to conversation
      * 4. Handle errors gracefully
      */
-    private void executeToolCall(ToolCall toolCall, List<Message> conversation) {
+    private void executeToolCall(ToolCall toolCall, Context context) {
         String toolName = toolCall.getToolName();
         Tool tool = tools.get(toolName);
         
@@ -104,7 +108,7 @@ public class AgentLoop {
         }
         
         String toolResultMessage = "Tool " + toolName + " returned: " + resultContent;
-        conversation.add(Message.user(toolResultMessage));
+        context.addUserMessage(toolResultMessage);
     }
     
     /**

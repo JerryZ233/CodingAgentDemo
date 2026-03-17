@@ -42,6 +42,9 @@ public class CodingAgent {
         
         this.agentLoop = new AgentLoop(llmClient, tools);
         this.conversation = new Context();
+        
+        // Set tool descriptions on context
+        this.conversation.setToolDescriptions(buildToolDescriptions());
     }
     
     /**
@@ -62,11 +65,12 @@ public class CodingAgent {
     public void execute(String task) {
         System.out.println("Starting agent execution...");
         
-        Message initialMessage = Message.user(task);
-        List<Message> conversation = new ArrayList<>();
-        conversation.add(initialMessage);
+        // Create a fresh context for single execution
+        Context singleContext = new Context();
+        singleContext.setToolDescriptions(buildToolDescriptions());
+        singleContext.addUserMessage(task);
         
-        agentLoop.run(conversation);
+        agentLoop.run(singleContext);
         
         System.out.println("Agent execution completed.");
     }
@@ -85,8 +89,8 @@ public class CodingAgent {
         // Add user message to conversation context
         conversation.addUserMessage(task);
         
-        // Run agent loop with the conversation history
-        agentLoop.run(conversation.getMessages());
+        // Run agent loop with the conversation context
+        agentLoop.run(conversation);
         
         System.out.println("Agent execution completed.");
     }
@@ -113,11 +117,31 @@ public class CodingAgent {
      * Returns the tool descriptions formatted for the LLM.
      */
     public String getToolDescriptions() {
+        return buildToolDescriptions();
+    }
+    
+    /**
+     * Builds the tool descriptions in JSON format for the LLM.
+     */
+    private String buildToolDescriptions() {
         StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        boolean first = true;
         for (Tool tool : tools.values()) {
-            sb.append("- ").append(tool.getName()).append(": ")
-              .append(tool.getDescription()).append("\n");
+            if (!first) {
+                sb.append(", ");
+            }
+            first = false;
+            sb.append("{");
+            sb.append("\"type\": \"function\", ");
+            sb.append("\"function\": {");
+            sb.append("\"name\": \"").append(tool.getName()).append("\", ");
+            sb.append("\"description\": \"").append(tool.getDescription()).append("\", ");
+            sb.append("\"parameters\": {\"type\": \"object\", \"properties\": {}}");
+            sb.append("}");
+            sb.append("}");
         }
+        sb.append("]");
         return sb.toString();
     }
 }

@@ -41,6 +41,13 @@ public class Message {
     }
     
     /**
+     * Creates a system message.
+     */
+    public static Message system(String content) {
+        return new Message("system", content);
+    }
+    
+    /**
      * Converts this message to a JSON string.
      * 
      * @return JSON representation of this message
