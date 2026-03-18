@@ -1,5 +1,6 @@
 package com.demo.llm.impl;
 
+import com.demo.llm.LLMClient;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import java.util.ArrayList;
@@ -12,7 +13,7 @@ import java.util.List;
  * It returns predefined responses based on the input or can be configured
  * to return specific responses for testing the agent loop.
  */
-public class DummyLLMClientImpl extends LLMClientImpl {
+public class DummyLLMClientImpl implements LLMClient {
     
     private String fixedResponse;
     private boolean returnToolCall;
@@ -23,7 +24,7 @@ public class DummyLLMClientImpl extends LLMClientImpl {
      * Creates a dummy LLM client.
      */
     public DummyLLMClientImpl() {
-        super("dummy-api-key", "https://dummy.api");
+        // No initialization needed
     }
     
     /**
@@ -32,7 +33,6 @@ public class DummyLLMClientImpl extends LLMClientImpl {
      * @param fixedResponse The response text to return
      */
     public DummyLLMClientImpl(String fixedResponse) {
-        super("dummy-api-key", "https://dummy.api");
         this.fixedResponse = fixedResponse;
     }
     
@@ -43,25 +43,9 @@ public class DummyLLMClientImpl extends LLMClientImpl {
      * @param toolArgs Arguments for the tool (JSON format)
      */
     public DummyLLMClientImpl(String toolName, String toolArgs) {
-        super("dummy-api-key", "https://dummy.api");
         this.returnToolCall = true;
         this.toolName = toolName;
         this.toolArgs = toolArgs;
-    }
-    
-    @Override
-    protected String getModel() {
-        return "dummy-model";
-    }
-    
-    @Override
-    protected int getMaxTokens() {
-        return 2048;
-    }
-    
-    @Override
-    protected double getTemperature() {
-        return 0.7;
     }
     
     @Override
@@ -81,11 +65,6 @@ public class DummyLLMClientImpl extends LLMClientImpl {
             "I have completed your task: " + lastMessage;
         
         return new LLMResponse(response, null);
-    }
-    
-    @Override
-    protected LLMResponse parseResponse(String jsonResponse) {
-        return new LLMResponse("Dummy response", null);
     }
     
     /**

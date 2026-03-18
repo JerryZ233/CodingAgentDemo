@@ -3,16 +3,18 @@ package com.demo.agent;
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.llm.impl.DummyLLMClientImpl;
-import com.demo.llm.impl.OpenAILLMClient;
+import com.demo.llm.impl.LLMClientImpl;
 import com.demo.model.Message;
 import com.demo.tools.Tool;
 import com.demo.tools.FileReadTool;
 import com.demo.tools.FileWriteTool;
 import com.demo.tools.FileListTool;
 import com.demo.tools.ShellRunTool;
-import java.util.ArrayList;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -58,8 +60,8 @@ public class CodingAgent {
         Config config = Config.getInstance();
         
         if (config.isConfigured()) {
-            System.out.println("Using OpenAI client with model: " + config.getModel());
-            return new OpenAILLMClient();
+            System.out.println("Using LLM client with model: " + config.getModel());
+            return new LLMClientImpl();
         } else {
             System.out.println("API key not configured. Using Dummy client.");
             System.out.println("To use real LLM, set LLM_API_KEY environment variable or configure in config.yaml");
@@ -141,27 +143,25 @@ public class CodingAgent {
     }
     
     /**
-     * Builds the tool descriptions in JSON format for the LLM.
+     * Builds the tool descriptions in JSON format for the LLM using Gson.
      */
     private String buildToolDescriptions() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[");
-        boolean first = true;
+        JsonArray toolsArray = new JsonArray();
+        Gson gson = new Gson();
+        
         for (Tool tool : tools.values()) {
-            if (!first) {
-                sb.append(", ");
-            }
-            first = false;
-            sb.append("{");
-            sb.append("\"type\": \"function\", ");
-            sb.append("\"function\": {");
-            sb.append("\"name\": \"").append(tool.getName()).append("\", ");
-            sb.append("\"description\": \"").append(tool.getDescription()).append("\", ");
-            sb.append("\"parameters\": {\"type\": \"object\", \"properties\": {}}");
-            sb.append("}");
-            sb.append("}");
+            JsonObject toolObject = new JsonObject();
+            toolObject.addProperty("type", "function");
+            
+            JsonObject function = new JsonObject();
+            function.addProperty("name", tool.getName());
+            function.addProperty("description", tool.getDescription());
+            function.add("parameters", gson.fromJson("{\"type\": \"object\", \"properties\": {}}", JsonObject.class));
+            
+            toolObject.add("function", function);
+            toolsArray.add(toolObject);
         }
-        sb.append("]");
-        return sb.toString();
+        
+        return toolsArray.toString();
     }
 }
