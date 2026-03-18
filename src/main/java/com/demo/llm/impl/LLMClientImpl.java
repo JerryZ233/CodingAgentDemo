@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * LLM client implementation for OpenAI-compatible APIs.
@@ -60,7 +61,11 @@ public class LLMClientImpl implements LLMClient {
         this.model = model;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .build();
         this.gson = new Gson();
     }
     
