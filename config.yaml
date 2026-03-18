@@ -4,16 +4,16 @@
 llm:
   # API endpoint (OpenAI-compatible)
   # Can be overridden by LLM_API_URL environment variable
-  api_url: "https://api.openai.com/v1/chat/completions"
+  api_url: "https://open.bigmodel.cn/api/paas/v4/chat/completions"
   
   # Model name
   # Can be overridden by LLM_MODEL environment variable
-  model: "gpt-4"
+  model: "glm-4.7-flash"
   
   # API key
   # Can be overridden by LLM_API_KEY environment variable
   # It's recommended to set this via environment variable for security
-  api_key: ""
+  api_key: "d103f40d74e4446a8c92111e9b06ba25.G8mzvuKI7D0iOwK1"
   
   # Maximum tokens to generate
   # Can be overridden by LLM_MAX_TOKENS environment variable
