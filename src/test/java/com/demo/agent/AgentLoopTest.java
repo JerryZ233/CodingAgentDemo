@@ -35,6 +35,19 @@ class AgentLoopTest {
         assertEquals("ok", messages.get(2).getContent());
     }
 
+    @Test
+    @DisplayName("Loop stops at configured max iterations")
+    void stopsAtConfiguredMaxIterations() {
+        ToolCall toolCall = new ToolCall("call_1", "echo", "{\"text\":\"hello\"}");
+        LLMClient llm = (messages, toolsDescription) -> new LLMClient.LLMResponse("", List.of(toolCall));
+        Context context = new Context();
+        context.addUserMessage("keep using a tool");
+
+        new AgentLoop(llm, Map.of("echo", new EchoTool()), 1).run(context);
+
+        assertEquals(3, context.getMessages().size());
+    }
+
     private static class EchoTool implements Tool {
         @Override
         public String getName() {

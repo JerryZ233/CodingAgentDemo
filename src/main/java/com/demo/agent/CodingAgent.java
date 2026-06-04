@@ -45,7 +45,7 @@ public class CodingAgent {
         this.tools = new HashMap<>();
         registerTools();
         
-        this.agentLoop = new AgentLoop(llmClient, tools);
+        this.agentLoop = new AgentLoop(llmClient, tools, Config.getInstance().getMaxIterations());
         this.conversation = new Context();
         
         // Set tool descriptions on context

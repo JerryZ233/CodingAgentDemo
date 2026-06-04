@@ -1,5 +1,6 @@
 package com.demo.tools;
 
+import com.demo.config.Config;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
@@ -38,7 +39,8 @@ public final class SecurityUtil {
      * Gets the workspace root (project directory).
      */
     public static Path getWorkspaceRoot() {
-        return Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        String configuredWorkspace = Config.getInstance().getWorkspaceDir();
+        return Paths.get(configuredWorkspace).toAbsolutePath().normalize();
     }
 
     /**

@@ -29,10 +29,16 @@ public class AgentLoop {
     private final LLMClient llmClient;
     private final Map<String, Tool> tools;
     private static final int MAX_ITERATIONS = 10;
+    private final int maxIterations;
     
     public AgentLoop(LLMClient llmClient, Map<String, Tool> tools) {
+        this(llmClient, tools, MAX_ITERATIONS);
+    }
+
+    public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, int maxIterations) {
         this.llmClient = llmClient;
         this.tools = tools;
+        this.maxIterations = maxIterations;
     }
     
     /**
@@ -56,7 +62,7 @@ public class AgentLoop {
     public void run(Context context) {
         String toolDescriptions = context.getToolDescriptions();
         
-        for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+        for (int iteration = 0; iteration < maxIterations; iteration++) {
             System.out.println("\n=== Iteration " + (iteration + 1) + " ===");
             
             // Build complete messages including system prompt
