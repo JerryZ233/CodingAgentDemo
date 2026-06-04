@@ -20,6 +20,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local secrets
+config.local.yaml
+
 # Temporary files
 *.swp
 *.swo
