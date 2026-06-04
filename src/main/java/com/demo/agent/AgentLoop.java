@@ -111,29 +111,4 @@ public class AgentLoop {
         context.addUserMessage(toolResultMessage);
     }
     
-    /**
-     * Builds the tool descriptions in a format the LLM can understand.
-     * This is typically a JSON schema describing each tool.
-     */
-    private String buildToolDescriptions() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[");
-        boolean first = true;
-        for (Tool tool : tools.values()) {
-            if (!first) {
-                sb.append(", ");
-            }
-            first = false;
-            sb.append("{");
-            sb.append("\"type\": \"function\", ");
-            sb.append("\"function\": {");
-            sb.append("\"name\": \"").append(tool.getName()).append("\", ");
-            sb.append("\"description\": \"").append(tool.getDescription()).append("\", ");
-            sb.append("\"parameters\": {\"type\": \"object\", \"properties\": {}}");
-            sb.append("}");
-            sb.append("}");
-        }
-        sb.append("]");
-        return sb.toString();
-    }
 }

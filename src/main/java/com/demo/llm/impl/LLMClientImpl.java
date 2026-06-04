@@ -122,7 +122,7 @@ public class LLMClientImpl implements LLMClient {
     /**
      * Parses the LLM API JSON response using Gson.
      */
-    private LLMResponse parseResponse(String jsonResponse) {
+    LLMResponse parseResponse(String jsonResponse) {
         if (jsonResponse == null || jsonResponse.isEmpty()) {
             return new LLMResponse("Error: Empty response from LLM", null);
         }

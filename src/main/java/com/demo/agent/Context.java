@@ -61,32 +61,15 @@ public class Context {
                "## Available Tools\n" +
                "You have access to the following tools:\n" +
                TOOLS_PLACEHOLDER + "\n\n" +
-               "## Tool Call Protocol\n" +
-               "When you need to use a tool, you MUST respond in the following JSON format:\n" +
-               "```json\n" +
-               "{\n" +
-               "  \"tool_calls\": [\n" +
-               "    {\n" +
-               "      \"name\": \"tool_name\",\n" +
-               "      \"arguments\": {\n" +
-               "        \"param1\": \"value1\",\n" +
-               "        \"param2\": \"value2\"\n" +
-               "      }\n" +
-               "    }\n" +
-               "  ]\n" +
-               "}\n" +
-               "```\n\n" +
-               "IMPORTANT:\n" +
-               "- When you need to call a tool, your response must be ONLY the JSON above, nothing else.\n" +
-               "- The \"name\" must match exactly one of the available tool names listed above.\n" +
-               "- The \"arguments\" must be a valid JSON object with the required parameters.\n" +
-               "- After receiving the tool result, you can continue with another tool call or provide your final answer.\n" +
-               "- If you don't need to use any tool, respond normally without JSON.\n\n" +
+               "## Tool Use\n" +
+               "When a task requires reading files, writing files, listing directories, or running another available tool,\n" +
+               "use the tool calling mechanism provided by the API. Do not describe a tool call in prose.\n" +
+               "After receiving the tool result, decide whether another tool call is needed or provide your final answer.\n\n" +
                "## Workflow\n" +
                "For each user request, follow this cycle:\n" +
                "1. THINK: Analyze the request and determine what needs to be done\n" +
                "2. DECIDE: Decide if you need to use tools or can answer directly\n" +
-               "3. EXECUTE: If using tools, output the JSON tool call format above\n" +
+               "3. EXECUTE: If using tools, call the appropriate API tool\n" +
                "4. OBSERVE: Read the tool result returned to you\n" +
                "5. RESPOND: Provide a clear response to the user\n\n" +
                "## Tool Calling Rules\n" +

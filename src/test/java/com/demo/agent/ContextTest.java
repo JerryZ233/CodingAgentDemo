@@ -33,6 +33,16 @@ class ContextTest {
     }
 
     @Test
+    @DisplayName("Default prompt uses API tool calling instead of JSON protocol")
+    void testDefaultPromptUsesApiToolCalling() {
+        String prompt = context.buildSystemPrompt();
+
+        assertTrue(prompt.contains("tool calling mechanism provided by the API"));
+        assertFalse(prompt.contains("ONLY the JSON"));
+        assertFalse(prompt.contains("\"tool_calls\""));
+    }
+
+    @Test
     @DisplayName("addUserMessage() adds message correctly")
     void testAddUserMessage() {
         context.addUserMessage("Hello, AI!");
