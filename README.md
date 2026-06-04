@@ -8,8 +8,9 @@ This project implements a basic AI Coding Agent with:
 
 - **Agent Loop**: Think-decide-execute-observe cycle
 - **LLM Integration**: Interface-based design for communication with Large Language Models
-- **Tool System**: Extensible tool framework for file operations and code execution
-- **Inversion of Control**: Clean separation between interfaces, implementations, and dummy implementations for testing
+- **Tool System**: Extensible tool framework for file operations and optional command execution
+- **Inversion of Control**: LLM and tools are injected through interfaces so tests can use dummy implementations
+- **Structured Tool Events**: Tool calls and tool results are preserved as structured conversation messages
 
 ## Requirements
 
@@ -18,18 +19,19 @@ This project implements a basic AI Coding Agent with:
 
 ## Project Structure
 
-```
+```text
 CodingAgentDemo/
-├── src/main/java/com/demo/
-│   ├── agent/           # Agent orchestration
-│   ├── llm/             # LLM client interface
-│   │   └── impl/        # LLM implementations
-│   ├── model/           # Data models
-│   └── tools/           # Tool interface
-│       └── impl/        # Tool implementations
-├── build.gradle.kts     # Gradle build configuration
-├── settings.gradle.kts  # Gradle settings
-└── gradle/              # Gradle wrapper
+|-- src/main/java/com/demo/
+|   |-- agent/           # Agent orchestration, context and memory
+|   |-- config/          # YAML and environment configuration
+|   |-- llm/             # LLM client interface
+|   |   `-- impl/        # LLM client implementations
+|   |-- model/           # Message, tool call and tool result models
+|   `-- tools/           # Tool interface and tool implementations
+|-- build.gradle.kts     # Gradle build configuration
+|-- config.yaml          # Default non-secret configuration
+|-- settings.gradle.kts  # Gradle settings
+`-- gradle/              # Gradle wrapper
 ```
 
 ## How to Build
@@ -40,7 +42,7 @@ CodingAgentDemo/
 
 For Windows:
 
-```gradle
+```bat
 gradlew.bat build
 ```
 
@@ -52,7 +54,7 @@ gradlew.bat build
 
 For Windows:
 
-```bash
+```bat
 gradlew.bat run
 ```
 
@@ -61,6 +63,10 @@ You can also pass a custom task as a command-line argument:
 ```bash
 ./gradlew run --args="create a hello world file"
 ```
+
+## Configuration
+
+`config.yaml` contains non-secret defaults. Set `LLM_API_KEY` in the environment for real LLM access. The shell tool is disabled by default; only enable `run_shell` after adding the approval and policy controls appropriate for your environment.
 
 ## How to Run Tests
 
@@ -72,15 +78,16 @@ You can also pass a custom task as a command-line argument:
 
 ### Packages
 
-- **agent**: Contains `Main`, `CodingAgent`, and `AgentLoop` - the core orchestration logic
-- **llm**: Contains `LLMClient` interface and `LLMResponse` class for LLM communication
-- **llm.impl**: Contains abstract `LLMClientImpl` and `DummyLLMClientImpl` for testing
-- **model**: Contains `Message`, `ToolCall`, and `ToolResult` data models
-- **tools**: Contains the `Tool` interface for extensibility
-- **tools.impl**: Contains abstract tool implementations and dummy implementations for testing
+- **agent**: Contains `Main`, `CodingAgent`, `AgentLoop`, `Context`, and `Memory`
+- **config**: Contains YAML and environment configuration loading
+- **llm**: Contains `LLMClient` and `LLMResponse`
+- **llm.impl**: Contains `LLMClientImpl` and `DummyLLMClientImpl`
+- **model**: Contains `Message`, `ToolCall`, and `ToolResult`
+- **tools**: Contains the `Tool` interface and concrete file/shell tool implementations
 
 ### Design Patterns
 
 - **Interface-based Design**: LLM and Tool components use interfaces for flexibility
 - **Inversion of Control**: Real implementations can be swapped with dummy implementations for testing
-- **Template Method**: Abstract classes provide common functionality while allowing specific implementations
+- **Command-style Tools**: Each tool exposes a stable name, description, argument schema, and execution method
+- **Structured Conversation Events**: Tool calls and tool results are stored as structured messages for replay/debuggability
