@@ -29,10 +29,20 @@ public interface LLMClient {
     class LLMResponse {
         private final String text;
         private final List<ToolCall> toolCalls;
+        private final boolean error;
         
         public LLMResponse(String text, List<ToolCall> toolCalls) {
+            this(text, toolCalls, false);
+        }
+
+        private LLMResponse(String text, List<ToolCall> toolCalls, boolean error) {
             this.text = text;
             this.toolCalls = toolCalls;
+            this.error = error;
+        }
+
+        public static LLMResponse error(String message) {
+            return new LLMResponse(message, null, true);
         }
         
         public String getText() {
@@ -45,6 +55,10 @@ public interface LLMClient {
         
         public boolean hasToolCalls() {
             return toolCalls != null && !toolCalls.isEmpty();
+        }
+
+        public boolean isError() {
+            return error;
         }
     }
 }

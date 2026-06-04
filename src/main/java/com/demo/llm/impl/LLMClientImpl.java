@@ -114,7 +114,7 @@ public class LLMClientImpl implements LLMClient {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "No response body";
                     System.err.println("LLM API error: " + response.code() + " - " + errorBody);
-                    return new LLMResponse("Error: Failed to get response from LLM", null);
+                    return LLMResponse.error("Failed to get response from LLM: HTTP " + response.code());
                 }
                 
                 String responseBody = response.body() != null ? response.body().string() : "";
@@ -122,7 +122,7 @@ public class LLMClientImpl implements LLMClient {
             }
         } catch (IOException e) {
             System.err.println("LLM communication error: " + e.getMessage());
-            return new LLMResponse("Error: Failed to communicate with LLM: " + e.getMessage(), null);
+            return LLMResponse.error("Failed to communicate with LLM: " + e.getMessage());
         }
     }
     
@@ -131,7 +131,7 @@ public class LLMClientImpl implements LLMClient {
      */
     LLMResponse parseResponse(String jsonResponse) {
         if (jsonResponse == null || jsonResponse.isEmpty()) {
-            return new LLMResponse("Error: Empty response from LLM", null);
+            return LLMResponse.error("Empty response from LLM");
         }
         
         try {
@@ -163,7 +163,7 @@ public class LLMClientImpl implements LLMClient {
         } catch (Exception e) {
             System.err.println("Failed to parse LLM response: " + e.getMessage());
             System.err.println("Response: " + jsonResponse);
-            return new LLMResponse("Error: Failed to parse LLM response: " + e.getMessage(), null);
+            return LLMResponse.error("Failed to parse LLM response: " + e.getMessage());
         }
     }
     

@@ -74,6 +74,13 @@ public class AgentLoop {
                 System.out.println("Failed to get response from LLM.");
                 return;
             }
+
+            if (response.isError()) {
+                String errorText = "Error: " + response.getText();
+                context.addAssistantMessage(errorText);
+                System.out.println(errorText);
+                return;
+            }
             
             if (!response.hasToolCalls()) {
                 String finalText = response.getText();

@@ -48,6 +48,20 @@ class AgentLoopTest {
         assertEquals(3, context.getMessages().size());
     }
 
+    @Test
+    @DisplayName("LLM errors are recorded as errors and stop the loop")
+    void stopsOnLlmError() {
+        LLMClient llm = (messages, toolsDescription) -> LLMClient.LLMResponse.error("transport failed");
+        Context context = new Context();
+        context.addUserMessage("do work");
+
+        new AgentLoop(llm, Map.of()).run(context);
+
+        assertEquals(2, context.getMessages().size());
+        assertEquals("assistant", context.getMessages().get(1).getRole());
+        assertEquals("Error: transport failed", context.getMessages().get(1).getContent());
+    }
+
     private static class EchoTool implements Tool {
         @Override
         public String getName() {
