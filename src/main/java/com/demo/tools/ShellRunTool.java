@@ -1,6 +1,8 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -58,6 +60,26 @@ public class ShellRunTool implements Tool {
     @Override
     public String getDescription() {
         return "Runs a shell command. Input: {\"command\": \"ls -la\", \"shell\": \"bash\"}";
+    }
+
+    @Override
+    public JsonObject getParametersSchema() {
+        return JsonParser.parseString("""
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Command to run inside the workspace"
+                },
+                "shell": {
+                  "type": "string",
+                  "description": "Optional shell: bash, sh, cmd, powershell, python, or node"
+                }
+              },
+              "required": ["command"]
+            }
+            """).getAsJsonObject();
     }
 
     @Override

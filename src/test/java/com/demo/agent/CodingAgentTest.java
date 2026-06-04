@@ -19,4 +19,14 @@ class CodingAgentTest {
         assertTrue(toolDescriptions.contains("list_files"));
         assertFalse(toolDescriptions.contains("run_shell"));
     }
+
+    @Test
+    @DisplayName("Tool descriptions include argument schemas")
+    void toolDescriptionsIncludeSchemas() {
+        CodingAgent agent = new CodingAgent();
+        String toolDescriptions = agent.getToolDescriptions();
+
+        assertTrue(toolDescriptions.contains("\"required\":[\"path\"]"));
+        assertTrue(toolDescriptions.contains("\"content\""));
+    }
 }

@@ -1,6 +1,8 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.File;
 import java.nio.file.Path;
 
@@ -26,6 +28,22 @@ public class FileListTool implements Tool {
     @Override
     public String getDescription() {
         return "Lists files in a directory. Input: {\"path\": \"directory path\"}";
+    }
+
+    @Override
+    public JsonObject getParametersSchema() {
+        return JsonParser.parseString("""
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Directory path to list, relative to the workspace when possible"
+                }
+              },
+              "required": ["path"]
+            }
+            """).getAsJsonObject();
     }
 
     @Override

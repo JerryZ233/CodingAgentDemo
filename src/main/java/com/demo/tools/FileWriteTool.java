@@ -1,6 +1,8 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -26,6 +28,26 @@ public class FileWriteTool implements Tool {
     @Override
     public String getDescription() {
         return "Writes content to a file. Input: {\"path\": \"file path\", \"content\": \"text\"}";
+    }
+
+    @Override
+    public JsonObject getParametersSchema() {
+        return JsonParser.parseString("""
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to write, relative to the workspace when possible"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Complete file content to write"
+                }
+              },
+              "required": ["path", "content"]
+            }
+            """).getAsJsonObject();
     }
 
     @Override

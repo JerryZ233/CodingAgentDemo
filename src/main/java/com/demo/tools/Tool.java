@@ -1,6 +1,8 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /**
  * Interface for all tools that the agent can use.
@@ -23,6 +25,13 @@ public interface Tool {
      * This is provided to the LLM so it knows when to use the tool.
      */
     String getDescription();
+
+    /**
+     * Returns the JSON schema for this tool's arguments.
+     */
+    default JsonObject getParametersSchema() {
+        return JsonParser.parseString("{\"type\":\"object\",\"properties\":{}}").getAsJsonObject();
+    }
     
     /**
      * Executes the tool with the given arguments.

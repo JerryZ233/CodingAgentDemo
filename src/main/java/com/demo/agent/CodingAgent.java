@@ -163,7 +163,7 @@ public class CodingAgent {
             JsonObject function = new JsonObject();
             function.addProperty("name", tool.getName());
             function.addProperty("description", tool.getDescription());
-            function.add("parameters", gson.fromJson("{\"type\": \"object\", \"properties\": {}}", JsonObject.class));
+            function.add("parameters", tool.getParametersSchema());
             
             toolObject.add("function", function);
             toolsArray.add(toolObject);

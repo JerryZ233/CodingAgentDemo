@@ -1,6 +1,8 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -23,6 +25,22 @@ public class FileReadTool implements Tool {
     @Override
     public String getDescription() {
         return "Reads content from a file. Input: {\"path\": \"file path\"}";
+    }
+
+    @Override
+    public JsonObject getParametersSchema() {
+        return JsonParser.parseString("""
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to read, relative to the workspace when possible"
+                }
+              },
+              "required": ["path"]
+            }
+            """).getAsJsonObject();
     }
 
     @Override
