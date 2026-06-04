@@ -1,25 +1,35 @@
 package com.demo.model;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import java.util.List;
 
 /**
  * Represents a message in the conversation with the LLM.
  * 
- * Messages can be from the user (user role), from the AI assistant (assistant role),
- * or from the system (system role). This is used to maintain conversation history
+ * Messages can be from the user, assistant, system, or a tool result.
+ * This is used to maintain conversation history
  * during the agent loop.
  */
 public class Message {
     
     private static final Gson GSON = new Gson();
     
-    private final String role;      // "user", "assistant", or "system"
+    private final String role;      // "user", "assistant", "system", or "tool"
     private final String content;   // The actual message text
+    private final List<ToolCall> toolCalls;
+    private final String toolCallId;
+    private final String toolName;
     
     public Message(String role, String content) {
+        this(role, content, null, null, null);
+    }
+
+    private Message(String role, String content, List<ToolCall> toolCalls, String toolCallId, String toolName) {
         this.role = role;
         this.content = content;
+        this.toolCalls = toolCalls;
+        this.toolCallId = toolCallId;
+        this.toolName = toolName;
     }
     
     public String getRole() {
@@ -28,6 +38,18 @@ public class Message {
     
     public String getContent() {
         return content;
+    }
+
+    public List<ToolCall> getToolCalls() {
+        return toolCalls;
+    }
+
+    public String getToolCallId() {
+        return toolCallId;
+    }
+
+    public String getToolName() {
+        return toolName;
     }
     
     /**
@@ -42,6 +64,14 @@ public class Message {
      */
     public static Message assistant(String content) {
         return new Message("assistant", content);
+    }
+
+    public static Message assistantToolCalls(String content, List<ToolCall> toolCalls) {
+        return new Message("assistant", content, toolCalls, null, null);
+    }
+
+    public static Message tool(String toolCallId, String toolName, String content) {
+        return new Message("tool", content, null, toolCallId, toolName);
     }
     
     /**

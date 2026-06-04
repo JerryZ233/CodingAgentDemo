@@ -79,11 +79,18 @@ public class LLMClientImpl implements LLMClient {
             requestMap.put("temperature", temperature);
             
             // Convert messages to JSON
-            List<Map<String, String>> messageList = new ArrayList<>();
+            List<Map<String, Object>> messageList = new ArrayList<>();
             for (Message msg : messages) {
-                Map<String, String> msgMap = new HashMap<>();
+                Map<String, Object> msgMap = new HashMap<>();
                 msgMap.put("role", msg.getRole());
                 msgMap.put("content", msg.getContent());
+                if ("assistant".equals(msg.getRole()) && msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
+                    msgMap.put("tool_calls", formatToolCalls(msg.getToolCalls()));
+                }
+                if ("tool".equals(msg.getRole())) {
+                    msgMap.put("tool_call_id", msg.getToolCallId());
+                    msgMap.put("name", msg.getToolName());
+                }
                 messageList.add(msgMap);
             }
             requestMap.put("messages", messageList);
@@ -173,6 +180,7 @@ public class LLMClientImpl implements LLMClient {
         for (JsonElement element : toolCallsArray) {
             try {
                 JsonObject toolCall = element.getAsJsonObject();
+                String id = toolCall.has("id") ? toolCall.get("id").getAsString() : null;
                 
                 // Handle function format
                 if (toolCall.has("function")) {
@@ -189,7 +197,7 @@ public class LLMClientImpl implements LLMClient {
                         }
                     }
                     
-                    toolCalls.add(new ToolCall(name, arguments));
+                    toolCalls.add(new ToolCall(id, name, arguments));
                 }
             } catch (Exception e) {
                 // Skip invalid tool call
@@ -197,5 +205,22 @@ public class LLMClientImpl implements LLMClient {
         }
         
         return toolCalls;
+    }
+
+    private List<Map<String, Object>> formatToolCalls(List<ToolCall> toolCalls) {
+        List<Map<String, Object>> formatted = new ArrayList<>();
+        for (ToolCall toolCall : toolCalls) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", toolCall.getId());
+            item.put("type", "function");
+
+            Map<String, Object> function = new HashMap<>();
+            function.put("name", toolCall.getToolName());
+            function.put("arguments", toolCall.getArguments());
+            item.put("function", function);
+
+            formatted.add(item);
+        }
+        return formatted;
     }
 }

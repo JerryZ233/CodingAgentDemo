@@ -21,6 +21,7 @@ class LLMClientImplTest {
                     "content": "",
                     "tool_calls": [
                       {
+                        "id": "call_1",
                         "type": "function",
                         "function": {
                           "name": "read_file",
@@ -37,6 +38,7 @@ class LLMClientImplTest {
         LLMClient.LLMResponse response = client.parseResponse(responseJson);
 
         assertTrue(response.hasToolCalls());
+        assertEquals("call_1", response.getToolCalls().get(0).getId());
         assertEquals("read_file", response.getToolCalls().get(0).getToolName());
         assertEquals("{\"path\":\"README.md\"}", response.getToolCalls().get(0).getArguments());
     }

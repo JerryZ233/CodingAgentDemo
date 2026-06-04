@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Represents a tool call requested by the LLM.
@@ -19,12 +20,22 @@ public class ToolCall {
     
     private static final Gson GSON = new Gson();
     
+    private final String id;
     private final String toolName;
     private final String arguments;
     
     public ToolCall(String toolName, String arguments) {
+        this(null, toolName, arguments);
+    }
+
+    public ToolCall(String id, String toolName, String arguments) {
+        this.id = id == null || id.isBlank() ? "call_" + UUID.randomUUID() : id;
         this.toolName = toolName;
         this.arguments = arguments;
+    }
+
+    public String getId() {
+        return id;
     }
     
     public String getToolName() {
@@ -55,7 +66,8 @@ public class ToolCall {
                 String name = function.get("name").getAsString();
                 JsonElement args = function.get("arguments");
                 String argsStr = args.isJsonObject() ? args.getAsJsonObject().toString() : args.getAsString();
-                return new ToolCall(name, argsStr);
+                String id = root.has("id") ? root.get("id").getAsString() : null;
+                return new ToolCall(id, name, argsStr);
             }
             
             // Handle flat format: {"name": ..., "arguments": ...}
@@ -63,7 +75,8 @@ public class ToolCall {
                 String name = root.get("name").getAsString();
                 JsonElement args = root.get("arguments");
                 String argsStr = args == null ? "{}" : (args.isJsonObject() ? args.getAsJsonObject().toString() : args.getAsString());
-                return new ToolCall(name, argsStr);
+                String id = root.has("id") ? root.get("id").getAsString() : null;
+                return new ToolCall(id, name, argsStr);
             }
             
             return null;

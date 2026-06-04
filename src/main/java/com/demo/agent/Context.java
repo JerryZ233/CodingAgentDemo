@@ -1,6 +1,7 @@
 package com.demo.agent;
 
 import com.demo.model.Message;
+import com.demo.model.ToolCall;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -235,6 +236,14 @@ public class Context {
      */
     public void addAssistantMessage(String content) {
         messages.add(Message.assistant(content));
+    }
+
+    public void addAssistantToolCalls(String content, List<ToolCall> toolCalls) {
+        messages.add(Message.assistantToolCalls(content, toolCalls));
+    }
+
+    public void addToolResult(ToolCall toolCall, String content) {
+        messages.add(Message.tool(toolCall.getId(), toolCall.getToolName(), content));
     }
     
     /**

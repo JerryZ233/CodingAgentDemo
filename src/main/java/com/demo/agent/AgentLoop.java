@@ -75,6 +75,8 @@ public class AgentLoop {
                 System.out.println("Final response: " + finalText);
                 return;
             }
+
+            context.addAssistantToolCalls(response.getText(), response.getToolCalls());
             
             for (ToolCall toolCall : response.getToolCalls()) {
                 executeToolCall(toolCall, context);
@@ -107,8 +109,7 @@ public class AgentLoop {
             System.out.println("Tool '" + toolName + "' result: " + resultContent);
         }
         
-        String toolResultMessage = "Tool " + toolName + " returned: " + resultContent;
-        context.addUserMessage(toolResultMessage);
+        context.addToolResult(toolCall, resultContent);
     }
     
 }
