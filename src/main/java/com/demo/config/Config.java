@@ -4,7 +4,9 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Configuration manager for the AI coding agent.
@@ -32,6 +34,7 @@ public class Config {
     private final double temperature;
     private final int maxIterations;
     private final String workspaceDir;
+    private final Set<String> enabledTools;
     
     // Default values
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1/chat/completions";
@@ -40,6 +43,11 @@ public class Config {
     private static final double DEFAULT_TEMPERATURE = 0.7;
     private static final int DEFAULT_MAX_ITERATIONS = 10;
     private static final String DEFAULT_WORKSPACE_DIR = ".";
+    private static final Set<String> DEFAULT_ENABLED_TOOLS = Set.of(
+        "read_file",
+        "write_file",
+        "list_files"
+    );
     
     private Config() {
         // Load from YAML first
@@ -55,6 +63,7 @@ public class Config {
         // Agent settings
         this.maxIterations = Integer.parseInt(getEnvOrYaml("AGENT_MAX_ITERATIONS", "agent.max_iterations", String.valueOf(DEFAULT_MAX_ITERATIONS), yamlConfig));
         this.workspaceDir = getEnvOrYaml("WORKSPACE_DIR", "agent.workspace_dir", DEFAULT_WORKSPACE_DIR, yamlConfig);
+        this.enabledTools = loadEnabledTools(yamlConfig);
     }
     
     /**
@@ -133,6 +142,32 @@ public class Config {
         
         return defaultValue;
     }
+
+    @SuppressWarnings("unchecked")
+    private Set<String> loadEnabledTools(Map<String, Object> yamlConfig) {
+        if (yamlConfig == null || yamlConfig.isEmpty()) {
+            return DEFAULT_ENABLED_TOOLS;
+        }
+
+        Object tools = yamlConfig.get("tools");
+        if (!(tools instanceof Map)) {
+            return DEFAULT_ENABLED_TOOLS;
+        }
+
+        Object enabled = ((Map<String, Object>) tools).get("enabled");
+        if (!(enabled instanceof List)) {
+            return DEFAULT_ENABLED_TOOLS;
+        }
+
+        Set<String> result = new java.util.HashSet<>();
+        for (Object item : (List<Object>) enabled) {
+            if (item != null && !item.toString().isBlank()) {
+                result.add(item.toString());
+            }
+        }
+
+        return result.isEmpty() ? DEFAULT_ENABLED_TOOLS : Set.copyOf(result);
+    }
     
     // Getters
     
@@ -162,6 +197,10 @@ public class Config {
     
     public String getWorkspaceDir() {
         return workspaceDir;
+    }
+
+    public Set<String> getEnabledTools() {
+        return enabledTools;
     }
     
     /**

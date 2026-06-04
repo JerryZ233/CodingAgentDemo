@@ -40,4 +40,5 @@ tools:
     - read_file
     - write_file
     - list_files
-    - run_shell
+    # Enable only after adding explicit approval/timeout controls.
+    # - run_shell

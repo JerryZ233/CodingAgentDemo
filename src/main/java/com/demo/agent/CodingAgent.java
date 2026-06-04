@@ -73,10 +73,17 @@ public class CodingAgent {
      * Registers all available tools that the agent can use.
      */
     private void registerTools() {
-        tools.put("read_file", new FileReadTool());
-        tools.put("write_file", new FileWriteTool());
-        tools.put("list_files", new FileListTool());
-        tools.put("run_shell", new ShellRunTool());
+        Config config = Config.getInstance();
+        registerToolIfEnabled(new FileReadTool(), config);
+        registerToolIfEnabled(new FileWriteTool(), config);
+        registerToolIfEnabled(new FileListTool(), config);
+        registerToolIfEnabled(new ShellRunTool(), config);
+    }
+
+    private void registerToolIfEnabled(Tool tool, Config config) {
+        if (config.getEnabledTools().contains(tool.getName())) {
+            tools.put(tool.getName(), tool);
+        }
     }
     
     /**
