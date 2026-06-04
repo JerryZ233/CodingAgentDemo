@@ -1,6 +1,7 @@
 package com.demo.agent;
 
 import java.util.Scanner;
+import java.util.NoSuchElementException;
 
 /**
  * Entry point for the AI Coding Agent demo.
@@ -21,7 +22,7 @@ public class Main {
         
         // Single-task mode: if args provided, execute and exit
         if (args.length > 0) {
-            String task = args[0];
+            String task = buildTaskFromArgs(args);
             System.out.println("=== AI Coding Agent Demo ===");
             System.out.println("Task: " + task);
             System.out.println();
@@ -55,7 +56,13 @@ public class Main {
         
         while (running) {
             System.out.print(" > ");
-            String input = scanner.nextLine().trim();
+            String input;
+            try {
+                input = scanner.nextLine().trim();
+            } catch (NoSuchElementException e) {
+                running = false;
+                break;
+            }
             
             if (input.isEmpty()) {
                 continue;
@@ -108,6 +115,10 @@ public class Main {
         }
         
         scanner.close();
+    }
+
+    static String buildTaskFromArgs(String[] args) {
+        return String.join(" ", args).trim();
     }
     
     /**
