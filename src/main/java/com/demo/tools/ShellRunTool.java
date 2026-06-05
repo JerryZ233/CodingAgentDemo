@@ -102,11 +102,14 @@ public class ShellRunTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
-        String command = JsonUtil.getString(args, "command");
-        String shell = JsonUtil.getString(args, "shell");
-
-        if (command == null || command.trim().isEmpty()) {
-            return ToolResult.error(getName(), "Missing 'command' in arguments");
+        String command;
+        String shell;
+        try {
+            ToolArguments arguments = ToolArguments.parse(args);
+            command = arguments.requiredString("command");
+            shell = arguments.optionalString("shell");
+        } catch (IllegalArgumentException e) {
+            return ToolResult.error(getName(), "Invalid arguments: " + e.getMessage());
         }
 
         // Security: Check for dangerous commands

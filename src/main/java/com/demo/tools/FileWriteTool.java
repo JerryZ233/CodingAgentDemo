@@ -59,21 +59,11 @@ public class FileWriteTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
-        if (args == null) {
-            return ToolResult.error(getName(), "Null arguments");
-        }
-
         try {
-            String pathStr = JsonUtil.getString(args, "path");
-            String content = JsonUtil.getString(args, "content");
-
-            if (pathStr == null || pathStr.trim().isEmpty()) {
-                return ToolResult.error(getName(), "Missing 'path' field in arguments");
-            }
-
-            if (content == null) {
-                content = "";
-            }
+            ToolArguments arguments = ToolArguments.parse(args);
+            String pathStr = arguments.requiredString("path");
+            String content = arguments.optionalString("content");
+            content = content == null ? "" : content;
 
             // Security: Path traversal prevention
             if (SecurityUtil.hasPathTraversal(pathStr)) {
@@ -111,6 +101,8 @@ public class FileWriteTool implements Tool {
 
             return ToolResult.success(getName(), "File written: " + pathStr);
 
+        } catch (IllegalArgumentException ex) {
+            return ToolResult.error(getName(), "Invalid arguments: " + ex.getMessage());
         } catch (SecurityException ex) {
             return ToolResult.error(getName(), 
                 "Security: Cannot write outside workspace. Path escapes workspace");

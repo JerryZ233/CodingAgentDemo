@@ -56,9 +56,11 @@ public class FileListTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
-        String path = JsonUtil.getString(args, "path");
-        if (path == null || path.trim().isEmpty()) {
-            return ToolResult.error(getName(), "Invalid or missing 'path' in arguments");
+        String path;
+        try {
+            path = ToolArguments.parse(args).requiredString("path");
+        } catch (IllegalArgumentException e) {
+            return ToolResult.error(getName(), "Invalid arguments: " + e.getMessage());
         }
 
         try {
