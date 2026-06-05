@@ -1,6 +1,7 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.google.gson.JsonObject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -77,6 +78,18 @@ class ShellRunToolTest {
     }
 
     @Test
+    @DisplayName("Path-capable shell commands reject arguments")
+    void pathCapableCommandsRejectArguments() {
+        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
+        String command = isWindows() ? "dir C:\\" : "ls /";
+
+        ToolResult result = tool.execute(jsonCommand(command));
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.getOutput().contains("does not accept arguments"), result.getOutput());
+    }
+
+    @Test
     @DisplayName("Simple allowlisted commands are allowed")
     void allowlistedSimpleCommandRuns() {
         ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
@@ -89,5 +102,11 @@ class ShellRunToolTest {
 
     private boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().contains("windows");
+    }
+
+    private String jsonCommand(String command) {
+        JsonObject object = new JsonObject();
+        object.addProperty("command", command);
+        return object.toString();
     }
 }

@@ -74,6 +74,11 @@ final class ShellPolicy {
             return CommandPlan.rejected("Security: command is not allowed: " + executable);
         }
 
+        if (requiresWorkspaceScopedPaths(executable) && hasArguments(normalizedCommand)) {
+            return CommandPlan.rejected(
+                "Security: command does not accept arguments; use workspace file tools for path access");
+        }
+
         return CommandPlan.allowed(List.of(shellSpec.executable(), shellSpec.flag(), normalizedCommand));
     }
 
@@ -92,6 +97,14 @@ final class ShellPolicy {
     private String firstToken(String command) {
         String[] parts = command.trim().split("\\s+", 2);
         return parts[0];
+    }
+
+    private boolean hasArguments(String command) {
+        return command.trim().split("\\s+", 2).length > 1;
+    }
+
+    private boolean requiresWorkspaceScopedPaths(String executable) {
+        return Set.of("cd", "pwd", "dir", "ls").contains(executable);
     }
 
     private static boolean isWindows() {
