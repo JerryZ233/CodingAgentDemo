@@ -42,7 +42,7 @@ public final class SecurityUtil {
      * Gets the workspace root (project directory).
      */
     public static Path getWorkspaceRoot() {
-        return getWorkspaceRoot(Config.getInstance());
+        return Paths.get(Config.DEFAULT_WORKSPACE_DIR).toAbsolutePath().normalize();
     }
 
     public static Path getWorkspaceRoot(Config config) {
