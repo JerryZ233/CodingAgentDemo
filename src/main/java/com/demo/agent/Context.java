@@ -9,13 +9,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
  * Manages conversation history for the AI agent.
  * 
  * This class maintains a list of messages exchanged between the user and the AI,
- * uses a Memory instance for persistent storage, and builds the complete context
+ * delegates persistent storage through a ConversationStore, and builds the complete context
  * to send to the LLM including system prompt, chat history, and tool descriptions.
  * 
  * The system prompt automatically includes the tool descriptions that are set
@@ -28,6 +29,7 @@ public class Context {
     private static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
     
     private final List<Message> messages;
+    private final ConversationStore conversationStore;
     private final Memory memory;
     private String systemPromptTemplate;
     private String toolDescriptions;
@@ -36,16 +38,10 @@ public class Context {
     private int maxHistoryMessages;
     
     /**
-     * Creates a new Context with a new Memory instance.
+     * Creates a new Context with the default conversation store.
      */
     public Context() {
-        this.messages = new ArrayList<>();
-        this.memory = new Memory();
-        this.systemPromptTemplate = getDefaultSystemPromptTemplate();
-        this.toolDescriptions = "";
-        this.toolSpecs = List.of();
-        this.maxHistoryChars = DEFAULT_MAX_HISTORY_CHARS;
-        this.maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES;
+        this(new ConversationMemoryAdapter());
     }
     
     /**
@@ -54,13 +50,34 @@ public class Context {
      * @param memory The Memory instance to use for persistence
      */
     public Context(Memory memory) {
+        this(new ConversationMemoryAdapter(memory), memory);
+    }
+
+    /**
+     * Creates a new Context with a custom conversation store.
+     *
+     * @param conversationStore The store to use for persistence
+     */
+    public Context(ConversationStore conversationStore) {
+        this(conversationStore, extractMemory(conversationStore));
+    }
+
+    private Context(ConversationStore conversationStore, Memory memory) {
         this.messages = new ArrayList<>();
+        this.conversationStore = Objects.requireNonNull(conversationStore, "conversationStore");
         this.memory = memory;
         this.systemPromptTemplate = getDefaultSystemPromptTemplate();
         this.toolDescriptions = "";
         this.toolSpecs = List.of();
         this.maxHistoryChars = DEFAULT_MAX_HISTORY_CHARS;
         this.maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES;
+    }
+
+    private static Memory extractMemory(ConversationStore conversationStore) {
+        if (conversationStore instanceof ConversationMemoryAdapter adapter) {
+            return adapter.getMemory();
+        }
+        return null;
     }
     
     /**
@@ -392,7 +409,7 @@ public class Context {
      * @param path The file path to save to
      */
     public void saveToFile(String path) {
-        memory.save(messages, path);
+        conversationStore.save(messages, path);
     }
     
     /**
@@ -401,7 +418,7 @@ public class Context {
      * @param path The file path to load from
      */
     public void loadFromFile(String path) {
-        List<Message> loaded = memory.load(path);
+        List<Message> loaded = conversationStore.load(path);
         messages.clear();
         messages.addAll(loaded);
     }
@@ -409,9 +426,18 @@ public class Context {
     /**
      * Returns the Memory instance used for persistence.
      * 
-     * @return The Memory instance
+     * @return The Memory instance, or null when Context was created with a non-Memory store
      */
     public Memory getMemory() {
         return memory;
+    }
+
+    /**
+     * Returns the store used for conversation persistence.
+     *
+     * @return The conversation store
+     */
+    public ConversationStore getConversationStore() {
+        return conversationStore;
     }
 }

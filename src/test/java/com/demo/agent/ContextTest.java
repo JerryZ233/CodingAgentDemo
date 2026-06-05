@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -292,6 +293,57 @@ class ContextTest {
     }
 
     @Test
+    @DisplayName("saveToFile() delegates to injected conversation store")
+    void testSaveDelegatesToInjectedStore() {
+        FakeConversationStore store = new FakeConversationStore();
+        Context contextWithStore = new Context(store);
+
+        contextWithStore.addUserMessage("Persist me");
+        contextWithStore.saveToFile("fake-path.json");
+
+        assertEquals("fake-path.json", store.savedPath);
+        assertEquals(1, store.savedMessages.size());
+        assertEquals("Persist me", store.savedMessages.get(0).getContent());
+        assertSame(store, contextWithStore.getConversationStore());
+        assertNull(contextWithStore.getMemory());
+    }
+
+    @Test
+    @DisplayName("loadFromFile() delegates to injected conversation store")
+    void testLoadDelegatesToInjectedStore() {
+        FakeConversationStore store = new FakeConversationStore();
+        store.messagesToLoad = List.of(Message.user("Loaded from fake store"));
+        Context contextWithStore = new Context(store);
+
+        contextWithStore.loadFromFile("fake-load.json");
+
+        assertEquals("fake-load.json", store.loadedPath);
+        assertEquals(1, contextWithStore.getMessages().size());
+        assertEquals("Loaded from fake store", contextWithStore.getMessages().get(0).getContent());
+    }
+
+    @Test
+    @DisplayName("loadFromFile() failure from injected store keeps current messages")
+    void testInjectedStoreLoadFailureKeepsCurrentMessages() {
+        FakeConversationStore store = new FakeConversationStore();
+        store.loadException = new AgentStorageException(
+            AgentStorageException.Reason.IO_FAILURE,
+            "fake load failure"
+        );
+        Context contextWithStore = new Context(store);
+        contextWithStore.addUserMessage("Keep this");
+
+        AgentStorageException exception = assertThrows(
+            AgentStorageException.class,
+            () -> contextWithStore.loadFromFile("broken.json")
+        );
+
+        assertSame(store.loadException, exception);
+        assertEquals(1, contextWithStore.getMessages().size());
+        assertEquals("Keep this", contextWithStore.getMessages().get(0).getContent());
+    }
+
+    @Test
     @DisplayName("loadFromFile() on non-existent file does not throw")
     void testLoadNonExistentFile() {
         // Should not throw, just print error
@@ -412,5 +464,29 @@ class ContextTest {
         
         // Verify getMemory() returns the injected instance
         assertSame(customMemory, contextWithMemory.getMemory());
+        assertTrue(contextWithMemory.getConversationStore() instanceof ConversationMemoryAdapter);
+    }
+
+    private static class FakeConversationStore implements ConversationStore {
+        private List<Message> messagesToLoad = List.of();
+        private RuntimeException loadException;
+        private List<Message> savedMessages = List.of();
+        private String savedPath;
+        private String loadedPath;
+
+        @Override
+        public void save(List<Message> messages, String path) {
+            this.savedMessages = new ArrayList<>(messages);
+            this.savedPath = path;
+        }
+
+        @Override
+        public List<Message> load(String path) {
+            this.loadedPath = path;
+            if (loadException != null) {
+                throw loadException;
+            }
+            return new ArrayList<>(messagesToLoad);
+        }
     }
 }
