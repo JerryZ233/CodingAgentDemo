@@ -2,6 +2,7 @@ package com.demo.agent;
 
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
+import com.demo.model.ToolResult;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -244,6 +245,16 @@ public class Context {
 
     public void addToolResult(ToolCall toolCall, String content) {
         messages.add(Message.tool(toolCall.getId(), toolCall.getToolName(), content));
+    }
+
+    public void addToolResult(ToolCall toolCall, ToolResult result) {
+        String error = result.isSuccess() ? null : result.getOutput();
+        messages.add(Message.tool(
+                toolCall.getId(),
+                toolCall.getToolName(),
+                result.getOutput(),
+                result.isSuccess(),
+                error));
     }
     
     /**

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,6 +89,31 @@ class MemoryTest {
         
         assertNotNull(loaded);
         assertTrue(loaded.isEmpty());
+    }
+
+    @Test
+    @DisplayName("load() throws storage exception for malformed JSON")
+    void testLoadMalformedJson(@TempDir Path tempDir) throws IOException {
+        File file = tempDir.resolve("malformed.json").toFile();
+        Files.writeString(file.toPath(), "{ not json");
+
+        AgentStorageException exception = assertThrows(
+            AgentStorageException.class,
+            () -> memory.load(file.getAbsolutePath())
+        );
+
+        assertEquals(AgentStorageException.Reason.MALFORMED_DATA, exception.getReason());
+    }
+
+    @Test
+    @DisplayName("save() throws storage exception when path is a directory")
+    void testSaveToDirectoryFails(@TempDir Path tempDir) {
+        AgentStorageException exception = assertThrows(
+            AgentStorageException.class,
+            () -> memory.save(Arrays.asList(Message.user("Test")), tempDir.toFile().getAbsolutePath())
+        );
+
+        assertEquals(AgentStorageException.Reason.IO_FAILURE, exception.getReason());
     }
 
     @Test

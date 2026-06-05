@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -199,6 +201,23 @@ class ContextTest {
     void testLoadNonExistentFile() {
         // Should not throw, just print error
         assertDoesNotThrow(() -> context.loadFromFile("non_existent_file.json"));
+    }
+
+    @Test
+    @DisplayName("loadFromFile() propagates malformed storage and keeps current messages")
+    void testLoadMalformedFileKeepsCurrentMessages(@TempDir Path tempDir) throws IOException {
+        context.addUserMessage("Keep me");
+        File file = tempDir.resolve("bad.json").toFile();
+        Files.writeString(file.toPath(), "{ not json");
+
+        AgentStorageException exception = assertThrows(
+            AgentStorageException.class,
+            () -> context.loadFromFile(file.getAbsolutePath())
+        );
+
+        assertEquals(AgentStorageException.Reason.MALFORMED_DATA, exception.getReason());
+        assertEquals(1, context.getMessages().size());
+        assertEquals("Keep me", context.getMessages().get(0).getContent());
     }
 
     @Test

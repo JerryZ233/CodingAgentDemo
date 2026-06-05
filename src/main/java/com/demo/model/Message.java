@@ -19,17 +19,26 @@ public class Message {
     private final List<ToolCall> toolCalls;
     private final String toolCallId;
     private final String toolName;
+    private final Boolean toolSuccess;
+    private final String toolError;
     
     public Message(String role, String content) {
-        this(role, content, null, null, null);
+        this(role, content, null, null, null, null, null);
     }
 
     private Message(String role, String content, List<ToolCall> toolCalls, String toolCallId, String toolName) {
+        this(role, content, toolCalls, toolCallId, toolName, null, null);
+    }
+
+    private Message(String role, String content, List<ToolCall> toolCalls, String toolCallId, String toolName,
+            Boolean toolSuccess, String toolError) {
         this.role = role;
         this.content = content;
         this.toolCalls = toolCalls;
         this.toolCallId = toolCallId;
         this.toolName = toolName;
+        this.toolSuccess = toolSuccess;
+        this.toolError = toolError;
     }
     
     public String getRole() {
@@ -50,6 +59,14 @@ public class Message {
 
     public String getToolName() {
         return toolName;
+    }
+
+    public Boolean getToolSuccess() {
+        return toolSuccess;
+    }
+
+    public String getToolError() {
+        return toolError;
     }
     
     /**
@@ -73,6 +90,10 @@ public class Message {
     public static Message tool(String toolCallId, String toolName, String content) {
         return new Message("tool", content, null, toolCallId, toolName);
     }
+
+    public static Message tool(String toolCallId, String toolName, String content, boolean success, String error) {
+        return new Message("tool", content, null, toolCallId, toolName, success, error);
+    }
     
     /**
      * Creates a system message.
@@ -94,17 +115,24 @@ public class Message {
      * Parses a JSON string and creates a Message object.
      * 
      * @param json The JSON string to parse
-     * @return A new Message object, or null if parsing fails
+     * @return A new Message object
      */
     public static Message fromJson(String json) {
         if (json == null || json.isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("Message JSON must not be null or empty");
         }
         
         try {
-            return GSON.fromJson(json, Message.class);
+            Message message = GSON.fromJson(json, Message.class);
+            if (message == null || message.role == null || message.role.isEmpty() || message.content == null) {
+                throw new IllegalArgumentException("Message JSON is missing required fields");
+            }
+            return message;
         } catch (Exception e) {
-            return null;
+            if (e instanceof IllegalArgumentException) {
+                throw e;
+            }
+            throw new IllegalArgumentException("Invalid message JSON", e);
         }
     }
 }

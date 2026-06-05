@@ -146,37 +146,29 @@ class MessageTest {
     }
 
     @Test
-    @DisplayName("fromJson() returns null for null input")
+    @DisplayName("fromJson() throws for null input")
     void testFromJsonNull() {
-        Message message = Message.fromJson(null);
-        assertNull(message);
+        assertThrows(IllegalArgumentException.class, () -> Message.fromJson(null));
     }
 
     @Test
-    @DisplayName("fromJson() returns null for invalid JSON")
+    @DisplayName("fromJson() throws for invalid JSON")
     void testFromJsonInvalid() {
-        Message message = Message.fromJson("not valid json");
-        assertNull(message);
+        assertThrows(IllegalArgumentException.class, () -> Message.fromJson("not valid json"));
     }
 
     @Test
-    @DisplayName("fromJson() returns null for missing role")
+    @DisplayName("fromJson() throws for missing role")
     void testFromJsonMissingRole() {
-        // Gson will set missing fields to null
         String json = "{\"content\": \"Test message\"}";
-        Message message = Message.fromJson(json);
-        // Either null (if field missing) or empty (if field present but null) is acceptable
-        assertTrue(message == null || message.getRole() == null || message.getRole().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> Message.fromJson(json));
     }
 
     @Test
-    @DisplayName("fromJson() returns null for missing content")
+    @DisplayName("fromJson() throws for missing content")
     void testFromJsonMissingContent() {
-        // Gson will set missing fields to null
         String json = "{\"role\": \"user\"}";
-        Message message = Message.fromJson(json);
-        // Either null (if field missing) or empty (if field present but null) is acceptable
-        assertTrue(message == null || message.getContent() == null || message.getContent().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> Message.fromJson(json));
     }
 
     @Test
@@ -212,5 +204,21 @@ class MessageTest {
         
         assertNotNull(parsed);
         assertEquals("", parsed.getContent());
+    }
+
+    @Test
+    @DisplayName("Tool message preserves execution status metadata")
+    void testToolMessageMetadataRoundTrip() {
+        Message original = Message.tool("call_1", "echo", "boom", false, "boom");
+        String json = original.toJson();
+        Message parsed = Message.fromJson(json);
+
+        assertNotNull(parsed);
+        assertEquals("tool", parsed.getRole());
+        assertEquals("call_1", parsed.getToolCallId());
+        assertEquals("echo", parsed.getToolName());
+        assertEquals("boom", parsed.getContent());
+        assertFalse(parsed.getToolSuccess());
+        assertEquals("boom", parsed.getToolError());
     }
 }

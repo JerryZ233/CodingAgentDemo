@@ -93,8 +93,12 @@ public class Main {
                 if (filePath.isEmpty()) {
                     System.out.println("Usage: save <file>");
                 } else {
-                    agent.getConversation().saveToFile(filePath);
-                    System.out.println("Conversation saved to: " + filePath);
+                    try {
+                        agent.getConversation().saveToFile(filePath);
+                        System.out.println("Conversation saved to: " + filePath);
+                    } catch (AgentStorageException e) {
+                        System.out.println("Failed to save conversation: " + e.getMessage());
+                    }
                 }
                 continue;
             }
@@ -104,8 +108,12 @@ public class Main {
                 if (filePath.isEmpty()) {
                     System.out.println("Usage: load <file>");
                 } else {
-                    agent.getConversation().loadFromFile(filePath);
-                    System.out.println("Conversation loaded from: " + filePath);
+                    try {
+                        agent.getConversation().loadFromFile(filePath);
+                        System.out.println("Conversation loaded from: " + filePath);
+                    } catch (AgentStorageException e) {
+                        System.out.println("Failed to load conversation: " + e.getMessage());
+                    }
                 }
                 continue;
             }

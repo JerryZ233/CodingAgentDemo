@@ -54,7 +54,7 @@ public class ToolCall {
      */
     public static ToolCall fromJson(String json) {
         if (json == null || json.isEmpty()) {
-            return null;
+            throw new IllegalArgumentException("Tool call JSON must not be null or empty");
         }
         
         try {
@@ -65,7 +65,7 @@ public class ToolCall {
                 JsonObject function = root.getAsJsonObject("function");
                 String name = function.get("name").getAsString();
                 JsonElement args = function.get("arguments");
-                String argsStr = args.isJsonObject() ? args.getAsJsonObject().toString() : args.getAsString();
+                String argsStr = args == null ? "{}" : (args.isJsonObject() ? args.getAsJsonObject().toString() : args.getAsString());
                 String id = root.has("id") ? root.get("id").getAsString() : null;
                 return new ToolCall(id, name, argsStr);
             }
@@ -79,9 +79,12 @@ public class ToolCall {
                 return new ToolCall(id, name, argsStr);
             }
             
-            return null;
+            throw new IllegalArgumentException("Tool call JSON is missing name/function");
         } catch (Exception e) {
-            return null;
+            if (e instanceof IllegalArgumentException) {
+                throw e;
+            }
+            throw new IllegalArgumentException("Invalid tool call JSON", e);
         }
     }
     
@@ -92,19 +95,19 @@ public class ToolCall {
         List<ToolCall> toolCalls = new ArrayList<>();
         
         if (json == null || json.isEmpty()) {
-            return toolCalls;
+            throw new IllegalArgumentException("Tool call list JSON must not be null or empty");
         }
         
         try {
             JsonArray array = JsonParser.parseString(json).getAsJsonArray();
             for (JsonElement element : array) {
-                ToolCall tc = fromJson(element.toString());
-                if (tc != null) {
-                    toolCalls.add(tc);
-                }
+                toolCalls.add(fromJson(element.toString()));
             }
         } catch (Exception e) {
-            // Return empty list
+            if (e instanceof IllegalArgumentException) {
+                throw e;
+            }
+            throw new IllegalArgumentException("Invalid tool call list JSON", e);
         }
         
         return toolCalls;
