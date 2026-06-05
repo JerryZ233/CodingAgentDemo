@@ -1,6 +1,10 @@
 package com.demo.agent;
 
 import com.demo.model.Message;
+import com.demo.model.ToolCall;
+import com.demo.tools.ToolSpec;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +31,77 @@ class ContextTest {
     }
 
     @Test
+    @DisplayName("buildMessagesForLLM() trims long history")
+    void testBuildMessagesForLLMTrimsLongHistory() {
+        context.setSystemPrompt("system prompt");
+        context.setContextWindowBudget(200, 5);
+
+        for (int i = 0; i < 10; i++) {
+            context.addUserMessage("old user " + i);
+            context.addAssistantMessage("old assistant " + i);
+        }
+
+        List<Message> llmMessages = context.buildMessagesForLLM();
+
+        assertEquals("system", llmMessages.get(0).getRole());
+        assertTrue(llmMessages.size() <= 6);
+        assertFalse(llmMessages.stream().anyMatch(m -> "old user 0".equals(m.getContent())));
+        assertTrue(llmMessages.stream().anyMatch(m -> "old assistant 9".equals(m.getContent())));
+    }
+
+    @Test
+    @DisplayName("buildMessagesForLLM() preserves system prompt when history is trimmed")
+    void testBuildMessagesForLLMPreservesSystemPrompt() {
+        context.setSystemPrompt("keep this system prompt");
+        context.setContextWindowBudget(1, 1);
+        context.addUserMessage("this history message is larger than the tiny budget");
+
+        List<Message> llmMessages = context.buildMessagesForLLM();
+
+        assertEquals("system", llmMessages.get(0).getRole());
+        assertEquals("keep this system prompt", llmMessages.get(0).getContent());
+    }
+
+    @Test
+    @DisplayName("buildMessagesForLLM() preserves recent messages")
+    void testBuildMessagesForLLMPreservesRecentMessages() {
+        context.setSystemPrompt("system prompt");
+        context.setContextWindowBudget(1_000, 3);
+
+        for (int i = 0; i < 6; i++) {
+            context.addUserMessage("message " + i);
+        }
+
+        List<Message> llmMessages = context.buildMessagesForLLM();
+
+        assertEquals(4, llmMessages.size());
+        assertEquals("message 3", llmMessages.get(1).getContent());
+        assertEquals("message 4", llmMessages.get(2).getContent());
+        assertEquals("message 5", llmMessages.get(3).getContent());
+    }
+
+    @Test
+    @DisplayName("buildMessagesForLLM() keeps recent tool call and result together")
+    void testBuildMessagesForLLMKeepsToolCallAndResultTogether() {
+        context.setSystemPrompt("system prompt");
+        context.setContextWindowBudget(80, 2);
+        context.addUserMessage("old message that should be trimmed");
+        ToolCall toolCall = new ToolCall("call_recent", "read_file", "{\"path\":\"README.md\"}");
+
+        context.addAssistantToolCalls("", List.of(toolCall));
+        context.addToolResult(toolCall, "recent tool result");
+
+        List<Message> llmMessages = context.buildMessagesForLLM();
+
+        assertEquals(3, llmMessages.size());
+        assertEquals("assistant", llmMessages.get(1).getRole());
+        assertEquals("call_recent", llmMessages.get(1).getToolCalls().get(0).getId());
+        assertEquals("tool", llmMessages.get(2).getRole());
+        assertEquals("call_recent", llmMessages.get(2).getToolCallId());
+        assertFalse(llmMessages.stream().anyMatch(m -> "old message that should be trimmed".equals(m.getContent())));
+    }
+
+    @Test
     @DisplayName("New context has empty message list")
     void testNewContextIsEmpty() {
         List<Message> messages = context.getMessages();
@@ -42,6 +117,26 @@ class ContextTest {
         assertTrue(prompt.contains("tool calling mechanism provided by the API"));
         assertFalse(prompt.contains("ONLY the JSON"));
         assertFalse(prompt.contains("\"tool_calls\""));
+    }
+
+    @Test
+    @DisplayName("System prompt uses structured tool specs including required parameters")
+    void testPromptUsesStructuredToolSpecs() {
+        JsonObject parametersSchema = JsonParser.parseString("""
+            {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" }
+              },
+              "required": ["path"]
+            }
+            """).getAsJsonObject();
+        context.setToolSpecs(List.of(new ToolSpec("read_file", "Reads a file.", parametersSchema)));
+
+        String prompt = context.buildSystemPrompt();
+
+        assertTrue(prompt.contains("- read_file: Reads a file. Required parameters: path."));
+        assertFalse(prompt.contains("\"function\""));
     }
 
     @Test

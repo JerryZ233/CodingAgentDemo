@@ -32,6 +32,13 @@ public interface Tool {
     default JsonObject getParametersSchema() {
         return JsonParser.parseString("{\"type\":\"object\",\"properties\":{}}").getAsJsonObject();
     }
+
+    /**
+     * Returns the structured spec used for both prompts and API tool schemas.
+     */
+    default ToolSpec getSpec() {
+        return ToolSpec.from(this);
+    }
     
     /**
      * Executes the tool with the given arguments.

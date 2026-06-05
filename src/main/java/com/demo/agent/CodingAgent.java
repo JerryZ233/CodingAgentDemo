@@ -4,17 +4,15 @@ import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.llm.impl.DummyLLMClientImpl;
 import com.demo.llm.impl.LLMClientImpl;
-import com.demo.model.Message;
 import com.demo.tools.Tool;
 import com.demo.tools.FileReadTool;
 import com.demo.tools.FileWriteTool;
 import com.demo.tools.FileListTool;
 import com.demo.tools.ShellRunTool;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.demo.tools.ToolDescriptions;
+import com.demo.tools.ToolSpec;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,7 +53,7 @@ public class CodingAgent {
         this.conversation = new Context();
         
         // Set tool descriptions on context
-        this.conversation.setToolDescriptions(buildToolDescriptions());
+        this.conversation.setToolSpecs(buildToolSpecs());
     }
     
     /**
@@ -100,7 +98,7 @@ public class CodingAgent {
         
         // Create a fresh context for single execution
         Context singleContext = new Context();
-        singleContext.setToolDescriptions(buildToolDescriptions());
+        singleContext.setToolSpecs(buildToolSpecs());
         singleContext.addUserMessage(task);
         
         agentLoop.run(singleContext);
@@ -144,35 +142,20 @@ public class CodingAgent {
      */
     public void setConversation(Context conversation) {
         this.conversation = conversation;
+        this.conversation.setToolSpecs(buildToolSpecs());
     }
     
     /**
      * Returns the tool descriptions formatted for the LLM.
      */
     public String getToolDescriptions() {
-        return buildToolDescriptions();
+        return ToolDescriptions.toOpenAIToolsJson(buildToolSpecs());
     }
     
     /**
-     * Builds the tool descriptions in JSON format for the LLM using Gson.
+     * Builds structured tool specs used by both prompts and API tool schemas.
      */
-    private String buildToolDescriptions() {
-        JsonArray toolsArray = new JsonArray();
-        Gson gson = new Gson();
-        
-        for (Tool tool : tools.values()) {
-            JsonObject toolObject = new JsonObject();
-            toolObject.addProperty("type", "function");
-            
-            JsonObject function = new JsonObject();
-            function.addProperty("name", tool.getName());
-            function.addProperty("description", tool.getDescription());
-            function.add("parameters", tool.getParametersSchema());
-            
-            toolObject.add("function", function);
-            toolsArray.add(toolObject);
-        }
-        
-        return toolsArray.toString();
+    private List<ToolSpec> buildToolSpecs() {
+        return ToolDescriptions.fromTools(tools.values());
     }
 }

@@ -3,12 +3,13 @@ package com.demo.agent;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import com.demo.model.ToolResult;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.demo.tools.ToolDescriptions;
+import com.demo.tools.ToolSpec;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Manages conversation history for the AI agent.
@@ -23,11 +24,16 @@ import java.util.List;
 public class Context {
     
     private static final String TOOLS_PLACEHOLDER = "{TOOLS}";
+    private static final int DEFAULT_MAX_HISTORY_CHARS = 64_000;
+    private static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
     
     private final List<Message> messages;
     private final Memory memory;
     private String systemPromptTemplate;
     private String toolDescriptions;
+    private List<ToolSpec> toolSpecs;
+    private int maxHistoryChars;
+    private int maxHistoryMessages;
     
     /**
      * Creates a new Context with a new Memory instance.
@@ -37,6 +43,9 @@ public class Context {
         this.memory = new Memory();
         this.systemPromptTemplate = getDefaultSystemPromptTemplate();
         this.toolDescriptions = "";
+        this.toolSpecs = List.of();
+        this.maxHistoryChars = DEFAULT_MAX_HISTORY_CHARS;
+        this.maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES;
     }
     
     /**
@@ -49,6 +58,9 @@ public class Context {
         this.memory = memory;
         this.systemPromptTemplate = getDefaultSystemPromptTemplate();
         this.toolDescriptions = "";
+        this.toolSpecs = List.of();
+        this.maxHistoryChars = DEFAULT_MAX_HISTORY_CHARS;
+        this.maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES;
     }
     
     /**
@@ -111,42 +123,20 @@ public class Context {
     
     /**
      * Formats tool descriptions for inclusion in the system prompt.
-     * Parses the JSON tool descriptions and creates a readable list.
+     * Uses structured tool specs so the prompt and API schema share one source.
      * 
      * @return Formatted tool descriptions string
      */
     private String formatToolDescriptionsForPrompt() {
-        if (toolDescriptions == null || toolDescriptions.isEmpty()) {
-            return "(No tools available)";
+        if (toolSpecs != null && !toolSpecs.isEmpty()) {
+            return ToolDescriptions.toPromptText(toolSpecs);
         }
-        
-        StringBuilder sb = new StringBuilder();
-        
-        try {
-            JsonArray toolsArray = JsonParser.parseString(toolDescriptions).getAsJsonArray();
-            
-            for (JsonElement element : toolsArray) {
-                JsonObject tool = element.getAsJsonObject();
-                
-                // Handle nested function format
-                if (tool.has("function")) {
-                    JsonObject function = tool.getAsJsonObject("function");
-                    String name = function.get("name").getAsString();
-                    String description = function.has("description") ? function.get("description").getAsString() : "";
-                    sb.append("- ").append(name).append(": ").append(description).append("\n");
-                } else {
-                    // Flat format
-                    String name = tool.has("name") ? tool.get("name").getAsString() : "";
-                    String description = tool.has("description") ? tool.get("description").getAsString() : "";
-                    sb.append("- ").append(name).append(": ").append(description).append("\n");
-                }
-            }
-        } catch (Exception e) {
-            // If parsing fails, return raw descriptions
+
+        if (toolDescriptions != null && !toolDescriptions.isEmpty()) {
             return toolDescriptions;
         }
-        
-        return sb.length() > 0 ? sb.toString() : "(No tools available)";
+
+        return "(No tools available)";
     }
     
     /**
@@ -186,6 +176,27 @@ public class Context {
      */
     public void setToolDescriptions(String toolDescriptions) {
         this.toolDescriptions = toolDescriptions;
+        this.toolSpecs = List.of();
+    }
+
+    /**
+     * Sets the structured tool specs for available tools.
+     * These are used to render both prompt text and LLM API tool schemas.
+     *
+     * @param toolSpecs The available tool specs
+     */
+    public void setToolSpecs(Collection<ToolSpec> toolSpecs) {
+        this.toolSpecs = toolSpecs == null ? List.of() : List.copyOf(toolSpecs);
+        this.toolDescriptions = ToolDescriptions.toOpenAIToolsJson(this.toolSpecs);
+    }
+
+    /**
+     * Returns the current structured tool specs.
+     *
+     * @return The tool specs
+     */
+    public List<ToolSpec> getToolSpecs() {
+        return toolSpecs;
     }
     
     /**
@@ -195,6 +206,24 @@ public class Context {
      */
     public String getToolDescriptions() {
         return toolDescriptions;
+    }
+
+    /**
+     * Sets the approximate history budget used when building LLM messages.
+     * The system prompt is always preserved and does not count against this budget.
+     *
+     * @param maxHistoryChars Approximate character budget for conversation history
+     * @param maxHistoryMessages Maximum number of conversation messages to include
+     */
+    public void setContextWindowBudget(int maxHistoryChars, int maxHistoryMessages) {
+        if (maxHistoryChars <= 0) {
+            throw new IllegalArgumentException("maxHistoryChars must be positive");
+        }
+        if (maxHistoryMessages <= 0) {
+            throw new IllegalArgumentException("maxHistoryMessages must be positive");
+        }
+        this.maxHistoryChars = maxHistoryChars;
+        this.maxHistoryMessages = maxHistoryMessages;
     }
     
     /**
@@ -215,10 +244,94 @@ public class Context {
             llmMessages.add(Message.system(fullSystemPrompt));
         }
         
-        // Add all conversation messages
-        llmMessages.addAll(messages);
+        // Add recent conversation messages within the context budget.
+        llmMessages.addAll(trimHistoryForLLM());
         
         return llmMessages;
+    }
+
+    private List<Message> trimHistoryForLLM() {
+        List<List<Message>> blocks = buildAtomicHistoryBlocks();
+        List<Message> selected = new ArrayList<>();
+        int selectedChars = 0;
+        int selectedMessages = 0;
+
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            List<Message> block = blocks.get(i);
+            int blockChars = estimateMessagesChars(block);
+            int blockMessages = block.size();
+            boolean fits = selectedMessages + blockMessages <= maxHistoryMessages
+                    && selectedChars + blockChars <= maxHistoryChars;
+
+            if (fits || selected.isEmpty()) {
+                selected.addAll(0, block);
+                selectedChars += blockChars;
+                selectedMessages += blockMessages;
+            } else {
+                break;
+            }
+        }
+
+        return selected;
+    }
+
+    private List<List<Message>> buildAtomicHistoryBlocks() {
+        List<List<Message>> blocks = new ArrayList<>();
+
+        for (int i = 0; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            List<Message> block = new ArrayList<>();
+            block.add(message);
+
+            if (hasToolCalls(message)) {
+                Set<String> expectedToolCallIds = new HashSet<>();
+                for (ToolCall toolCall : message.getToolCalls()) {
+                    expectedToolCallIds.add(toolCall.getId());
+                }
+
+                while (i + 1 < messages.size()) {
+                    Message next = messages.get(i + 1);
+                    if (!"tool".equals(next.getRole()) || !expectedToolCallIds.contains(next.getToolCallId())) {
+                        break;
+                    }
+                    block.add(next);
+                    i++;
+                }
+            }
+
+            blocks.add(block);
+        }
+
+        return blocks;
+    }
+
+    private boolean hasToolCalls(Message message) {
+        return message.getToolCalls() != null && !message.getToolCalls().isEmpty();
+    }
+
+    private int estimateMessagesChars(List<Message> messages) {
+        int total = 0;
+        for (Message message : messages) {
+            total += estimateMessageChars(message);
+        }
+        return total;
+    }
+
+    private int estimateMessageChars(Message message) {
+        int total = length(message.getRole()) + length(message.getContent())
+                + length(message.getToolCallId()) + length(message.getToolName());
+
+        if (message.getToolCalls() != null) {
+            for (ToolCall toolCall : message.getToolCalls()) {
+                total += length(toolCall.getId()) + length(toolCall.getToolName()) + length(toolCall.getArguments());
+            }
+        }
+
+        return total;
+    }
+
+    private int length(String value) {
+        return value == null ? 0 : value.length();
     }
     
     /**

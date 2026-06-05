@@ -34,6 +34,17 @@ class CodingAgentTest {
     }
 
     @Test
+    @DisplayName("Conversation prompt includes required parameters from tool specs")
+    void conversationPromptIncludesRequiredParametersFromToolSpecs() {
+        CodingAgent agent = new CodingAgent(Config.defaults());
+        String prompt = agent.getConversation().buildSystemPrompt();
+
+        assertTrue(prompt.contains("read_file"));
+        assertTrue(prompt.contains("Required parameters: path."));
+        assertTrue(prompt.contains("Required parameters: path, content."));
+    }
+
+    @Test
     @DisplayName("Explicit agent config controls enabled tools")
     void explicitConfigControlsEnabledTools() {
         Config config = new Config(
@@ -54,5 +65,18 @@ class CodingAgentTest {
         assertFalse(toolDescriptions.contains("read_file"));
         assertFalse(toolDescriptions.contains("write_file"));
         assertFalse(toolDescriptions.contains("list_files"));
+    }
+
+    @Test
+    @DisplayName("setConversation injects current tool specs")
+    void setConversationInjectsToolSpecs() {
+        CodingAgent agent = new CodingAgent(Config.defaults());
+        Context restored = new Context();
+
+        agent.setConversation(restored);
+
+        String prompt = restored.buildSystemPrompt();
+        assertTrue(prompt.contains("read_file"));
+        assertTrue(restored.getToolDescriptions().contains("\"read_file\""));
     }
 }
