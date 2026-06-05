@@ -34,7 +34,7 @@ public class Message {
             Boolean toolSuccess, String toolError) {
         this.role = role;
         this.content = content;
-        this.toolCalls = toolCalls;
+        this.toolCalls = toolCalls == null ? null : List.copyOf(toolCalls);
         this.toolCallId = toolCallId;
         this.toolName = toolName;
         this.toolSuccess = toolSuccess;

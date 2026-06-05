@@ -2,6 +2,9 @@ package com.demo.model;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -220,5 +223,21 @@ class MessageTest {
         assertEquals("boom", parsed.getContent());
         assertFalse(parsed.getToolSuccess());
         assertEquals("boom", parsed.getToolError());
+    }
+
+    @Test
+    @DisplayName("Assistant tool call messages defensively copy tool calls")
+    void assistantToolCallMessagesDefensivelyCopyToolCalls() {
+        List<ToolCall> toolCalls = new ArrayList<>();
+        toolCalls.add(new ToolCall("call_1", "echo", "{}"));
+
+        Message message = Message.assistantToolCalls("", toolCalls);
+        toolCalls.add(new ToolCall("call_2", "echo", "{}"));
+
+        assertEquals(1, message.getToolCalls().size());
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> message.getToolCalls().add(new ToolCall("call_3", "echo", "{}"))
+        );
     }
 }

@@ -217,6 +217,7 @@ class ContextTest {
         assertNotNull(messages);
         assertEquals(1, messages.size());
         assertEquals("Test", messages.get(0).getContent());
+        assertThrows(UnsupportedOperationException.class, () -> messages.add(Message.user("external mutation")));
     }
 
     @Test

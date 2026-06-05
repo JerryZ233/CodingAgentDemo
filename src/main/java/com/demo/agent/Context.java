@@ -221,7 +221,7 @@ public class Context {
      * @return The message list
      */
     public List<Message> getMessages() {
-        return messages;
+        return List.copyOf(messages);
     }
     
     /**
