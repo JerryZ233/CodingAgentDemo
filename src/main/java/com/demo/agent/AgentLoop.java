@@ -59,7 +59,7 @@ public class AgentLoop {
      *   1. Build complete context using Context (system prompt + chat history)
      *   2. Send messages to LLM with tool descriptions
      *   3. Get response (text + potential tool calls)
-     *   4. If text only (no tools): add to conversation, print result, DONE
+     *   4. If text only (no tools): add to conversation, notify observer, DONE
      *   5. If tool calls:
      *        a. Add assistant message with tool call to conversation
      *        b. For each tool call:
@@ -123,7 +123,7 @@ public class AgentLoop {
      * Implementation steps:
      * 1. Look up the tool by name from the tools map
      * 2. Call tool.execute() with the arguments
-     * 3. Format the result as a message and add to conversation
+     * 3. Add a structured tool result message to conversation
      * 4. Handle errors gracefully
      */
     private ToolResult executeToolCall(ToolCall toolCall, Context context) {

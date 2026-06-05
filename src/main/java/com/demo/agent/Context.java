@@ -19,8 +19,9 @@ import java.util.Set;
  * delegates persistent storage through a ConversationStore, and builds the complete context
  * to send to the LLM including system prompt, chat history, and tool descriptions.
  * 
- * The system prompt automatically includes the tool descriptions that are set
- * via setToolDescriptions(), so new tools will be automatically included.
+ * The system prompt automatically includes structured tool specs set through
+ * setToolSpecs(). The older JSON tool description setter remains for
+ * compatibility but does not infer prompt details from the schema.
  */
 public class Context {
     

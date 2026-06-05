@@ -24,10 +24,12 @@ import java.util.concurrent.TimeUnit;
  * 
  * Supported shells: platform shells only (cmd/powershell on Windows, sh/bash on POSIX)
  * 
- * Security features:
+ * In-process guardrails:
  * - Explicit shell policy with command allowlist
  * - Shell metacharacter and redirection blocking
  * - Dangerous command and path pattern blocking
+ *
+ * This tool is not an OS sandbox or permission boundary.
  */
 public class ShellRunTool implements Tool {
 
