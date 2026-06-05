@@ -63,7 +63,7 @@ public class CodingAgent {
      * 
      * @param task The user's coding task (e.g., "write a fibonacci program")
      */
-    public void execute(String task) {
+    public AgentRunResult execute(String task) {
         observer.onAgentStarted("Starting agent execution...");
         
         // Create a fresh context for single execution
@@ -71,9 +71,10 @@ public class CodingAgent {
         singleContext.setToolSpecs(buildToolSpecs());
         singleContext.addUserMessage(task);
         
-        agentLoop.run(singleContext);
+        AgentRunResult result = agentLoop.run(singleContext);
         
         observer.onAgentCompleted("Agent execution completed.");
+        return result;
     }
     
     /**
@@ -84,16 +85,17 @@ public class CodingAgent {
      * 
      * @param task The user's coding task
      */
-    public void executeWithHistory(String task) {
+    public AgentRunResult executeWithHistory(String task) {
         observer.onAgentStarted("Starting agent execution with history...");
         
         // Add user message to conversation context
         conversation.addUserMessage(task);
         
         // Run agent loop with the conversation context
-        agentLoop.run(conversation);
+        AgentRunResult result = agentLoop.run(conversation);
         
         observer.onAgentCompleted("Agent execution completed.");
+        return result;
     }
     
     /**

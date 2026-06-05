@@ -79,4 +79,26 @@ class CodingAgentTest {
         assertTrue(prompt.contains("read_file"));
         assertTrue(restored.getToolDescriptions().contains("\"read_file\""));
     }
+
+    @Test
+    @DisplayName("execute returns structured run result")
+    void executeReturnsRunResult() {
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
+
+        AgentRunResult result = agent.execute("answer directly");
+
+        assertTrue(result.isCompleted());
+        assertTrue(result.getMessage().contains("answer directly"));
+    }
+
+    @Test
+    @DisplayName("executeWithHistory returns structured run result")
+    void executeWithHistoryReturnsRunResult() {
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
+
+        AgentRunResult result = agent.executeWithHistory("remember this");
+
+        assertTrue(result.isCompleted());
+        assertTrue(result.getMessage().contains("remember this"));
+    }
 }
