@@ -9,8 +9,6 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,13 +20,14 @@ import java.util.concurrent.TimeUnit;
  * 
  * Input format:
  * - {"command": "ls -la"} - run shell command
- * - {"command": "python script.py", "shell": "bash"} - specify shell (optional)
+ * - {"command": "echo hello", "shell": "cmd"} - specify shell (optional)
  * 
- * Supported shells: bash, sh, cmd, powershell, python, node
+ * Supported shells: platform shells only (cmd/powershell on Windows, sh/bash on POSIX)
  * 
  * Security features:
- * - Dangerous command blocking
- * - Dangerous path pattern blocking
+ * - Explicit shell policy with command allowlist
+ * - Shell metacharacter and redirection blocking
+ * - Dangerous command and path pattern blocking
  */
 public class ShellRunTool implements Tool {
 
@@ -44,6 +43,7 @@ public class ShellRunTool implements Tool {
     private final Duration timeout;
     private final int outputLimit;
     private final Path workspaceRoot;
+    private final ShellPolicy shellPolicy;
 
     public ShellRunTool() {
         this(SecurityUtil.getWorkspaceRoot(), DEFAULT_TIMEOUT, DEFAULT_OUTPUT_LIMIT);
@@ -58,9 +58,14 @@ public class ShellRunTool implements Tool {
     }
 
     ShellRunTool(Path workspaceRoot, Duration timeout, int outputLimit) {
+        this(workspaceRoot, timeout, outputLimit, ShellPolicy.defaultPolicy());
+    }
+
+    ShellRunTool(Path workspaceRoot, Duration timeout, int outputLimit, ShellPolicy shellPolicy) {
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.timeout = timeout;
         this.outputLimit = outputLimit;
+        this.shellPolicy = shellPolicy;
     }
 
     @Override
@@ -85,7 +90,7 @@ public class ShellRunTool implements Tool {
                 },
                 "shell": {
                   "type": "string",
-                  "description": "Optional shell: bash, sh, cmd, powershell, python, or node"
+                  "description": "Optional shell: bash/sh on POSIX or cmd/powershell on Windows"
                 }
               },
               "required": ["command"]
@@ -112,10 +117,12 @@ public class ShellRunTool implements Tool {
             return ToolResult.error(getName(), "Security: Blocked dangerous pattern in command");
         }
 
-        // Build command based on shell
-        List<String> cmdList = buildCommand(command, shell);
+        ShellPolicy.CommandPlan commandPlan = shellPolicy.approve(command, shell);
+        if (!commandPlan.isAllowed()) {
+            return ToolResult.error(getName(), commandPlan.rejectionReason());
+        }
 
-        ProcessBuilder pb = new ProcessBuilder(cmdList);
+        ProcessBuilder pb = new ProcessBuilder(commandPlan.commandLine());
         pb.redirectErrorStream(true);
         pb.directory(workspaceRoot.toFile());
 
@@ -177,60 +184,4 @@ public class ShellRunTool implements Tool {
         }
     }
 
-    private List<String> buildCommand(String command, String shellType) {
-        List<String> cmd = new ArrayList<>();
-
-        if (shellType != null) {
-            switch (shellType.toLowerCase()) {
-                case "bash":
-                case "sh":
-                    cmd.add("bash");
-                    cmd.add("-c");
-                    cmd.add(command);
-                    break;
-                case "cmd":
-                case "windows":
-                case "cmd.exe":
-                    cmd.add("cmd");
-                    cmd.add("/c");
-                    cmd.add(command);
-                    break;
-                case "powershell":
-                case "pwsh":
-                    cmd.add("powershell");
-                    cmd.add("-Command");
-                    cmd.add(command);
-                    break;
-                case "python":
-                    cmd.add("python");
-                    cmd.add("-c");
-                    cmd.add(command);
-                    break;
-                case "node":
-                    cmd.add("node");
-                    cmd.add("-e");
-                    cmd.add(command);
-                    break;
-                default:
-                    // Default shell
-                    cmd.add("sh");
-                    cmd.add("-c");
-                    cmd.add(command);
-            }
-        } else {
-            // Auto-detect: use platform default
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("windows")) {
-                cmd.add("cmd");
-                cmd.add("/c");
-                cmd.add(command);
-            } else {
-                cmd.add("sh");
-                cmd.add("-c");
-                cmd.add(command);
-            }
-        }
-
-        return cmd;
-    }
 }

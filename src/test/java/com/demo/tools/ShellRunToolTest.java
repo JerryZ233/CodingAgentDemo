@@ -46,12 +46,45 @@ class ShellRunToolTest {
     @DisplayName("Shell commands time out")
     void commandTimesOut() {
         ShellRunTool tool = new ShellRunTool(Duration.ofMillis(100), 4096);
-        String command = isWindows() ? "ping -n 5 127.0.0.1 > nul" : "sleep 5";
+        String command = isWindows() ? "ping -n 5 127.0.0.1" : "sleep 5";
 
         ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
 
         assertFalse(result.isSuccess());
         assertTrue(result.getOutput().contains("timed out"), result.getOutput());
+    }
+
+    @Test
+    @DisplayName("Unknown shells are rejected instead of falling back")
+    void unknownShellIsRejected() {
+        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
+
+        ToolResult result = tool.execute("{\"command\":\"echo hello\",\"shell\":\"not-a-real-shell\"}");
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.getOutput().contains("shell is not allowed"), result.getOutput());
+    }
+
+    @Test
+    @DisplayName("Shell metacharacters are rejected")
+    void shellMetacharactersAreRejected() {
+        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
+
+        ToolResult result = tool.execute("{\"command\":\"echo hello && echo blocked\"}");
+
+        assertFalse(result.isSuccess());
+        assertTrue(result.getOutput().contains("metacharacters"), result.getOutput());
+    }
+
+    @Test
+    @DisplayName("Simple allowlisted commands are allowed")
+    void allowlistedSimpleCommandRuns() {
+        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
+
+        ToolResult result = tool.execute("{\"command\":\"echo hello\"}");
+
+        assertTrue(result.isSuccess(), result.getOutput());
+        assertTrue(result.getOutput().contains("hello"), result.getOutput());
     }
 
     private boolean isWindows() {

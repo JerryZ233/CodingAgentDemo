@@ -66,7 +66,7 @@ You can also pass a custom task as a command-line argument:
 
 ## Configuration
 
-`config.yaml` contains non-secret defaults. Set `LLM_API_KEY` in the environment for real LLM access. The shell tool is disabled by default; only enable `run_shell` after adding the approval and policy controls appropriate for your environment.
+`config.yaml` contains non-secret defaults. Set `LLM_API_KEY` in the environment for real LLM access. The shell tool is disabled by default. If `run_shell` is enabled, it still applies a narrow policy: only platform shell names are accepted, unknown shell names are rejected instead of falling back, command names must be on a small allowlist, and shell metacharacters, pipes, redirects, and background execution are blocked. This reduces risk but is not an OS-level sandbox.
 
 ## How to Run Tests
 

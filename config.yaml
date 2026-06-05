@@ -40,5 +40,7 @@ tools:
     - read_file
     - write_file
     - list_files
-    # Enable only after adding explicit approval/timeout controls.
+    # Disabled by default. When enabled, run_shell is still limited to a
+    # small shell/command allowlist and blocks shell metacharacters; it is not
+    # an OS-level sandbox.
     # - run_shell
