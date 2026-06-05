@@ -31,6 +31,7 @@ public class CodingAgent {
     private final LLMClient llmClient;
     private final Map<String, Tool> tools;
     private final AgentLoop agentLoop;
+    private final Config config;
     private Context conversation;
     
     /**
@@ -40,12 +41,17 @@ public class CodingAgent {
      * Uses OpenAILLMClient if API key is configured, otherwise falls back to Dummy.
      */
     public CodingAgent() {
+        this(Config.getInstance());
+    }
+
+    public CodingAgent(Config config) {
+        this.config = config;
         this.llmClient = createLLMClient();
         
         this.tools = new HashMap<>();
         registerTools();
         
-        this.agentLoop = new AgentLoop(llmClient, tools, Config.getInstance().getMaxIterations());
+        this.agentLoop = new AgentLoop(llmClient, tools, config.getMaxIterations());
         this.conversation = new Context();
         
         // Set tool descriptions on context
@@ -57,11 +63,9 @@ public class CodingAgent {
      * Uses OpenAI client if API key is configured, otherwise uses Dummy.
      */
     private LLMClient createLLMClient() {
-        Config config = Config.getInstance();
-        
         if (config.isConfigured()) {
             System.out.println("Using LLM client with model: " + config.getModel());
-            return new LLMClientImpl();
+            return new LLMClientImpl(config);
         } else {
             System.out.println("API key not configured. Using Dummy client.");
             System.out.println("To use real LLM, set LLM_API_KEY environment variable or configure in config.yaml");
@@ -73,11 +77,11 @@ public class CodingAgent {
      * Registers all available tools that the agent can use.
      */
     private void registerTools() {
-        Config config = Config.getInstance();
-        registerToolIfEnabled(new FileReadTool(), config);
-        registerToolIfEnabled(new FileWriteTool(), config);
-        registerToolIfEnabled(new FileListTool(), config);
-        registerToolIfEnabled(new ShellRunTool(), config);
+        java.nio.file.Path workspaceRoot = config.getWorkspacePath();
+        registerToolIfEnabled(new FileReadTool(workspaceRoot), config);
+        registerToolIfEnabled(new FileWriteTool(workspaceRoot), config);
+        registerToolIfEnabled(new FileListTool(workspaceRoot), config);
+        registerToolIfEnabled(new ShellRunTool(workspaceRoot), config);
     }
 
     private void registerToolIfEnabled(Tool tool, Config config) {

@@ -45,11 +45,15 @@ public class LLMClientImpl implements LLMClient {
      * Creates a new LLM client using Config.
      */
     public LLMClientImpl() {
-        this(Config.getInstance().getApiUrl(),
-             Config.getInstance().getApiKey(),
-             Config.getInstance().getModel(),
-             Config.getInstance().getMaxTokens(),
-             Config.getInstance().getTemperature());
+        this(Config.getInstance());
+    }
+
+    public LLMClientImpl(Config config) {
+        this(config.getApiUrl(),
+             config.getApiKey(),
+             config.getModel(),
+             config.getMaxTokens(),
+             config.getTemperature());
     }
     
     /**
@@ -145,13 +149,18 @@ public class LLMClientImpl implements LLMClient {
                     JsonObject firstChoice = choices.get(0).getAsJsonObject();
                     if (firstChoice.has("message")) {
                         JsonObject message = firstChoice.getAsJsonObject("message");
-                        if (message.has("content")) {
+                        if (message.has("content") && !message.get("content").isJsonNull()) {
                             text = message.get("content").getAsString();
                         }
                         
                         // Extract tool calls from message
                         if (message.has("tool_calls")) {
-                            List<ToolCall> toolCalls = extractToolCalls(message.getAsJsonArray("tool_calls"));
+                            List<ToolCall> toolCalls;
+                            try {
+                                toolCalls = extractToolCalls(message.getAsJsonArray("tool_calls"));
+                            } catch (IllegalArgumentException e) {
+                                return LLMResponse.error("Invalid tool_calls in LLM response: " + e.getMessage());
+                            }
                             return new LLMResponse(text, toolCalls);
                         }
                     }
@@ -198,9 +207,11 @@ public class LLMClientImpl implements LLMClient {
                     }
                     
                     toolCalls.add(new ToolCall(id, name, arguments));
+                } else {
+                    throw new IllegalArgumentException("tool call is missing function");
                 }
             } catch (Exception e) {
-                // Skip invalid tool call
+                throw new IllegalArgumentException("malformed tool call: " + e.getMessage(), e);
             }
         }
         

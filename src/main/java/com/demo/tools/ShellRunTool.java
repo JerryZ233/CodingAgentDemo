@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -42,12 +43,22 @@ public class ShellRunTool implements Tool {
 
     private final Duration timeout;
     private final int outputLimit;
+    private final Path workspaceRoot;
 
     public ShellRunTool() {
-        this(DEFAULT_TIMEOUT, DEFAULT_OUTPUT_LIMIT);
+        this(SecurityUtil.getWorkspaceRoot(), DEFAULT_TIMEOUT, DEFAULT_OUTPUT_LIMIT);
     }
 
     ShellRunTool(Duration timeout, int outputLimit) {
+        this(SecurityUtil.getWorkspaceRoot(), timeout, outputLimit);
+    }
+
+    public ShellRunTool(Path workspaceRoot) {
+        this(workspaceRoot, DEFAULT_TIMEOUT, DEFAULT_OUTPUT_LIMIT);
+    }
+
+    ShellRunTool(Path workspaceRoot, Duration timeout, int outputLimit) {
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.timeout = timeout;
         this.outputLimit = outputLimit;
     }
@@ -106,7 +117,7 @@ public class ShellRunTool implements Tool {
 
         ProcessBuilder pb = new ProcessBuilder(cmdList);
         pb.redirectErrorStream(true);
-        pb.directory(SecurityUtil.getWorkspaceRoot().toFile());
+        pb.directory(workspaceRoot.toFile());
 
         StringBuilder output = new StringBuilder();
         ExecutorService executor = Executors.newSingleThreadExecutor();
