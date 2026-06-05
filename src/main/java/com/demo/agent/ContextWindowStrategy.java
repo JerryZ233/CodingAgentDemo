@@ -14,23 +14,34 @@ public class ContextWindowStrategy {
 
     public static final int DEFAULT_MAX_HISTORY_CHARS = 64_000;
     public static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
+    public static final int DEFAULT_MAX_MESSAGE_CHARS = 8_000;
+    private static final String TRUNCATION_SUFFIX = "\n[message truncated]";
 
     private final int maxHistoryChars;
     private final int maxHistoryMessages;
+    private final int maxMessageChars;
 
     public ContextWindowStrategy() {
         this(DEFAULT_MAX_HISTORY_CHARS, DEFAULT_MAX_HISTORY_MESSAGES);
     }
 
     public ContextWindowStrategy(int maxHistoryChars, int maxHistoryMessages) {
+        this(maxHistoryChars, maxHistoryMessages, DEFAULT_MAX_MESSAGE_CHARS);
+    }
+
+    public ContextWindowStrategy(int maxHistoryChars, int maxHistoryMessages, int maxMessageChars) {
         if (maxHistoryChars <= 0) {
             throw new IllegalArgumentException("maxHistoryChars must be positive");
         }
         if (maxHistoryMessages <= 0) {
             throw new IllegalArgumentException("maxHistoryMessages must be positive");
         }
+        if (maxMessageChars <= TRUNCATION_SUFFIX.length()) {
+            throw new IllegalArgumentException("maxMessageChars must leave room for truncation suffix");
+        }
         this.maxHistoryChars = maxHistoryChars;
         this.maxHistoryMessages = maxHistoryMessages;
+        this.maxMessageChars = maxMessageChars;
     }
 
     public List<Message> selectHistory(List<Message> messages) {
@@ -40,7 +51,7 @@ public class ContextWindowStrategy {
         int selectedMessages = 0;
 
         for (int i = blocks.size() - 1; i >= 0; i--) {
-            List<Message> block = blocks.get(i);
+            List<Message> block = trimOversizedMessages(blocks.get(i));
             int blockChars = estimateMessagesChars(block);
             int blockMessages = block.size();
             boolean fits = selectedMessages + blockMessages <= maxHistoryMessages
@@ -56,6 +67,24 @@ public class ContextWindowStrategy {
         }
 
         return selected;
+    }
+
+    private List<Message> trimOversizedMessages(List<Message> block) {
+        List<Message> trimmed = new ArrayList<>();
+        for (Message message : block) {
+            trimmed.add(trimOversizedMessage(message));
+        }
+        return trimmed;
+    }
+
+    private Message trimOversizedMessage(Message message) {
+        String content = message.getContent();
+        if (content == null || content.length() <= maxMessageChars) {
+            return message;
+        }
+
+        int prefixLength = maxMessageChars - TRUNCATION_SUFFIX.length();
+        return message.withContent(content.substring(0, prefixLength) + TRUNCATION_SUFFIX);
     }
 
     private List<List<Message>> buildAtomicHistoryBlocks(List<Message> messages) {

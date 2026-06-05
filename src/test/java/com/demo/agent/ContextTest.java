@@ -103,6 +103,24 @@ class ContextTest {
     }
 
     @Test
+    @DisplayName("Context window truncates oversized messages without mutating history")
+    void contextWindowTruncatesOversizedMessagesWithoutMutatingHistory() {
+        ToolCall toolCall = new ToolCall("call_large", "read_file", "{\"path\":\"large.txt\"}");
+        Message assistant = Message.assistantToolCalls("", List.of(toolCall));
+        Message largeToolResult = Message.tool("call_large", "read_file", "x".repeat(200), true, null);
+        ContextWindowStrategy strategy = new ContextWindowStrategy(1_000, 10, 80);
+
+        List<Message> selected = strategy.selectHistory(List.of(assistant, largeToolResult));
+
+        Message selectedToolResult = selected.get(1);
+        assertEquals("tool", selectedToolResult.getRole());
+        assertEquals("call_large", selectedToolResult.getToolCallId());
+        assertEquals(80, selectedToolResult.getContent().length());
+        assertTrue(selectedToolResult.getContent().endsWith("[message truncated]"));
+        assertEquals(200, largeToolResult.getContent().length());
+    }
+
+    @Test
     @DisplayName("New context has empty message list")
     void testNewContextIsEmpty() {
         List<Message> messages = context.getMessages();

@@ -68,6 +68,10 @@ public class Message {
     public String getToolError() {
         return toolError;
     }
+
+    public Message withContent(String newContent) {
+        return new Message(role, newContent, toolCalls, toolCallId, toolName, toolSuccess, toolError);
+    }
     
     /**
      * Creates a user message.
