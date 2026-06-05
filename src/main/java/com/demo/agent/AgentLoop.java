@@ -59,10 +59,11 @@ public class AgentLoop {
      * 
      * @param context The Context containing conversation history and configuration
      */
-    public void run(Context context) {
+    public AgentRunResult run(Context context) {
         String toolDescriptions = context.getToolDescriptions();
         
         for (int iteration = 0; iteration < maxIterations; iteration++) {
+            int completedIterations = iteration + 1;
             System.out.println("\n=== Iteration " + (iteration + 1) + " ===");
             
             // Build complete messages including system prompt
@@ -71,32 +72,38 @@ public class AgentLoop {
             LLMClient.LLMResponse response = llmClient.sendMessage(messages, toolDescriptions);
             
             if (response == null) {
-                System.out.println("Failed to get response from LLM.");
-                return;
+                String errorText = "Failed to get response from LLM.";
+                System.out.println(errorText);
+                return AgentRunResult.llmError(errorText, completedIterations);
             }
 
             if (response.isError()) {
                 String errorText = "Error: " + response.getText();
                 context.addAssistantMessage(errorText);
                 System.out.println(errorText);
-                return;
+                return AgentRunResult.llmError(errorText, completedIterations);
             }
             
             if (!response.hasToolCalls()) {
                 String finalText = response.getText();
                 context.addAssistantMessage(finalText);
                 System.out.println("Final response: " + finalText);
-                return;
+                return AgentRunResult.completed(finalText, completedIterations);
             }
 
             context.addAssistantToolCalls(response.getText(), response.getToolCalls());
             
             for (ToolCall toolCall : response.getToolCalls()) {
-                executeToolCall(toolCall, context);
+                ToolResult result = executeToolCall(toolCall, context);
+                if (!result.isSuccess()) {
+                    return AgentRunResult.toolError(result.getOutput(), completedIterations);
+                }
             }
         }
         
-        System.out.println("Maximum iterations reached. Task may not be complete.");
+        String errorText = "Maximum iterations reached. Task may not be complete.";
+        System.out.println(errorText);
+        return AgentRunResult.maxIterations(errorText, maxIterations);
     }
     
     /**
@@ -108,21 +115,27 @@ public class AgentLoop {
      * 3. Format the result as a message and add to conversation
      * 4. Handle errors gracefully
      */
-    private void executeToolCall(ToolCall toolCall, Context context) {
+    private ToolResult executeToolCall(ToolCall toolCall, Context context) {
         String toolName = toolCall.getToolName();
         Tool tool = tools.get(toolName);
         
-        String resultContent;
+        ToolResult result;
         if (tool == null) {
-            resultContent = "Error: Tool '" + toolName + "' not found.";
-            System.out.println(resultContent);
+            result = ToolResult.error(toolName, "Error: Tool '" + toolName + "' not found.");
         } else {
-            ToolResult result = tool.execute(toolCall.getArguments());
-            resultContent = result.getOutput();
-            System.out.println("Tool '" + toolName + "' result: " + resultContent);
+            try {
+                result = tool.execute(toolCall.getArguments());
+                if (result == null) {
+                    result = ToolResult.error(toolName, "Error: Tool '" + toolName + "' returned no result.");
+                }
+            } catch (Exception e) {
+                result = ToolResult.error(toolName, "Error: Tool '" + toolName + "' failed: " + e.getMessage());
+            }
         }
         
-        context.addToolResult(toolCall, resultContent);
+        System.out.println("Tool '" + toolName + "' result: " + result.getOutput());
+        context.addToolResult(toolCall, result);
+        return result;
     }
     
 }
