@@ -4,6 +4,7 @@ import com.demo.model.ToolResult;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -17,7 +18,14 @@ import java.nio.file.Path;
  */
 public class FileListTool implements Tool {
 
+    private final Path workspaceRoot;
+
     public FileListTool() {
+        this(SecurityUtil.getWorkspaceRoot());
+    }
+
+    public FileListTool(Path workspaceRoot) {
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
     }
 
     @Override
@@ -53,16 +61,7 @@ public class FileListTool implements Tool {
             return ToolResult.error(getName(), "Invalid or missing 'path' in arguments");
         }
 
-        File dir = new File(path);
         try {
-            Path absolutePath = dir.toPath().toAbsolutePath().normalize();
-
-            // Security: Workspace confinement
-            if (!SecurityUtil.isWithinWorkspace(absolutePath)) {
-                return ToolResult.error(getName(), 
-                    "Security: Cannot list outside workspace. Path: " + path);
-            }
-
             // Security: Path traversal prevention
             if (SecurityUtil.hasPathTraversal(path)) {
                 return ToolResult.error(getName(), 
@@ -70,18 +69,21 @@ public class FileListTool implements Tool {
             }
 
             // Security: Block dangerous paths
-            if (SecurityUtil.isDangerousPath(absolutePath.toString())) {
+            if (SecurityUtil.isDangerousPath(path)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot list dangerous path: " + path);
             }
 
-            if (!dir.exists()) {
+            Path absolutePath = SecurityUtil.resolveExistingWorkspacePath(path, workspaceRoot);
+            File dir = absolutePath.toFile();
+
+            if (!Files.exists(absolutePath)) {
                 return ToolResult.error(getName(), "Path does not exist: " + path);
             }
-            if (!dir.isDirectory()) {
+            if (!Files.isDirectory(absolutePath)) {
                 return ToolResult.error(getName(), "Path is not a directory: " + path);
             }
-            if (!dir.canRead()) {
+            if (!Files.isReadable(absolutePath)) {
                 return ToolResult.error(getName(), "Permission denied reading directory: " + path);
             }
 
@@ -98,7 +100,7 @@ public class FileListTool implements Tool {
             String listing = formatListing(children);
             return ToolResult.success(getName(), listing);
         } catch (SecurityException se) {
-            return ToolResult.error(getName(), "Permission denied: " + se.getMessage());
+            return ToolResult.error(getName(), "Security: Cannot list outside workspace. Path: " + path);
         } catch (Exception e) {
             return ToolResult.error(getName(), "Error listing directory: " + e.getMessage());
         }

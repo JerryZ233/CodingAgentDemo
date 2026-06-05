@@ -17,7 +17,14 @@ import java.nio.file.Path;
  */
 public class FileWriteTool implements Tool {
 
+    private final Path workspaceRoot;
+
     public FileWriteTool() {
+        this(SecurityUtil.getWorkspaceRoot());
+    }
+
+    public FileWriteTool(Path workspaceRoot) {
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
     }
 
     @Override
@@ -68,15 +75,6 @@ public class FileWriteTool implements Tool {
                 content = "";
             }
 
-            Path path = Path.of(pathStr);
-            Path absolutePath = path.toAbsolutePath().normalize();
-
-            // Security: Workspace confinement
-            if (!SecurityUtil.isWithinWorkspace(absolutePath)) {
-                return ToolResult.error(getName(), 
-                    "Security: Cannot write outside workspace. Path: " + pathStr);
-            }
-
             // Security: Path traversal prevention
             if (SecurityUtil.hasPathTraversal(pathStr)) {
                 return ToolResult.error(getName(), 
@@ -84,10 +82,12 @@ public class FileWriteTool implements Tool {
             }
 
             // Security: Block dangerous paths
-            if (SecurityUtil.isDangerousPath(absolutePath.toString())) {
+            if (SecurityUtil.isDangerousPath(pathStr)) {
                 return ToolResult.error(getName(), 
                     "Security: Cannot write to dangerous path: " + pathStr);
             }
+
+            java.nio.file.Path absolutePath = SecurityUtil.resolveWritableWorkspacePath(pathStr, workspaceRoot);
 
             // Security: File extension whitelist
             if (!SecurityUtil.isAllowedExtension(absolutePath.toString())) {
@@ -101,9 +101,9 @@ public class FileWriteTool implements Tool {
             }
 
             // Create parent directories if needed
-            Path parent = absolutePath.getParent();
-            if (parent != null && !Files.exists(parent)) {
-                Files.createDirectories(parent);
+            java.nio.file.Path parent = absolutePath.getParent();
+            if (parent != null) {
+                SecurityUtil.ensureWritableParentDirectory(parent, workspaceRoot);
             }
 
             // Write the file
@@ -111,6 +111,9 @@ public class FileWriteTool implements Tool {
 
             return ToolResult.success(getName(), "File written: " + pathStr);
 
+        } catch (SecurityException ex) {
+            return ToolResult.error(getName(), 
+                "Security: Cannot write outside workspace. Path escapes workspace");
         } catch (Exception ex) {
             return ToolResult.error(getName(), "Error writing file: " + ex.getMessage());
         }

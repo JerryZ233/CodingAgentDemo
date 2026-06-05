@@ -17,6 +17,16 @@ import java.nio.file.Path;
  */
 public class FileReadTool implements Tool {
 
+    private final Path workspaceRoot;
+
+    public FileReadTool() {
+        this(SecurityUtil.getWorkspaceRoot());
+    }
+
+    public FileReadTool(Path workspaceRoot) {
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
+    }
+
     @Override
     public String getName() {
         return "read_file";
@@ -51,18 +61,14 @@ public class FileReadTool implements Tool {
         }
 
         try {
-            Path absolutePath = Path.of(path).toAbsolutePath().normalize();
-
             // Security checks
             if (SecurityUtil.hasPathTraversal(path)) {
                 return ToolResult.error(getName(), "Security: Path traversal not allowed");
             }
-            if (!SecurityUtil.isWithinWorkspace(absolutePath)) {
-                return ToolResult.error(getName(), "Security: Cannot read outside workspace. Path: " + path);
-            }
             if (SecurityUtil.isDangerousPath(path)) {
                 return ToolResult.error(getName(), "Security: Cannot read dangerous path: " + path);
             }
+            Path absolutePath = SecurityUtil.resolveExistingWorkspacePath(path, workspaceRoot);
             if (!Files.isRegularFile(absolutePath)) {
                 return ToolResult.error(getName(), "Path is not a file: " + path);
             }
@@ -80,6 +86,8 @@ public class FileReadTool implements Tool {
             return ToolResult.error(getName(), "File not found: " + path);
         } catch (java.nio.file.AccessDeniedException e) {
             return ToolResult.error(getName(), "Permission denied: " + path);
+        } catch (SecurityException e) {
+            return ToolResult.error(getName(), "Security: Cannot read outside workspace. Path: " + path);
         } catch (Exception e) {
             return ToolResult.error(getName(), "Error reading file: " + e.getMessage());
         }
