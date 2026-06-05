@@ -10,9 +10,13 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,24 +38,48 @@ public class Memory {
      * @param path The file path to save to
      */
     public void save(List<Message> messages, String path) {
-        java.io.File file = new java.io.File(path);
-        java.io.File parent = file.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.exists()) {
-            throw new AgentStorageException(
-                    AgentStorageException.Reason.IO_FAILURE,
-                    "Failed to create parent directory for memory file: " + parent.getAbsolutePath());
-        }
+        Path target = Path.of(path).toAbsolutePath().normalize();
+        Path parent = target.getParent();
+        Path tempFile = null;
 
         try {
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(path))) {
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Path tempDirectory = parent == null ? Path.of(".").toAbsolutePath().normalize() : parent;
+            tempFile = Files.createTempFile(tempDirectory, target.getFileName().toString(), ".tmp");
+            try (BufferedWriter writer = Files.newBufferedWriter(tempFile, StandardCharsets.UTF_8)) {
                 MessageList container = new MessageList(messages);
                 GSON.toJson(container, writer);
             }
+            moveIntoPlace(tempFile, target);
+            tempFile = null;
         } catch (IOException e) {
             throw new AgentStorageException(
                     AgentStorageException.Reason.IO_FAILURE,
                     "Failed to save memory file: " + path,
                     e);
+        } finally {
+            deleteTempFile(tempFile);
+        }
+    }
+
+    private void moveIntoPlace(Path tempFile, Path target) throws IOException {
+        try {
+            Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void deleteTempFile(Path tempFile) {
+        if (tempFile == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(tempFile);
+        } catch (IOException ignored) {
+            // Best-effort cleanup after a failed save.
         }
     }
     
