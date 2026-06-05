@@ -3,23 +3,13 @@ package com.demo.llm.impl;
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.model.Message;
-import com.demo.model.ToolCall;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -37,7 +27,8 @@ public class LLMClientImpl implements LLMClient {
     private final int maxTokens;
     private final double temperature;
     private final OkHttpClient httpClient;
-    private final Gson gson;
+    private final OpenAIChatAdapter chatAdapter;
+    private final OpenAIResponseParser responseParser;
     
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
     
@@ -70,42 +61,14 @@ public class LLMClientImpl implements LLMClient {
                 .readTimeout(120, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .build();
-        this.gson = new Gson();
+        this.chatAdapter = new OpenAIChatAdapter();
+        this.responseParser = new OpenAIResponseParser();
     }
     
     @Override
     public LLMResponse sendMessage(List<Message> messages, String toolsDescription) {
         try {
-            // Build request body using Gson
-            Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", model);
-            requestMap.put("max_tokens", maxTokens);
-            requestMap.put("temperature", temperature);
-            
-            // Convert messages to JSON
-            List<Map<String, Object>> messageList = new ArrayList<>();
-            for (Message msg : messages) {
-                Map<String, Object> msgMap = new HashMap<>();
-                msgMap.put("role", msg.getRole());
-                msgMap.put("content", msg.getContent());
-                if ("assistant".equals(msg.getRole()) && msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
-                    msgMap.put("tool_calls", formatToolCalls(msg.getToolCalls()));
-                }
-                if ("tool".equals(msg.getRole())) {
-                    msgMap.put("tool_call_id", msg.getToolCallId());
-                    msgMap.put("name", msg.getToolName());
-                }
-                messageList.add(msgMap);
-            }
-            requestMap.put("messages", messageList);
-            
-            // Add tools if provided
-            if (toolsDescription != null && !toolsDescription.isEmpty()) {
-                JsonArray toolsArray = JsonParser.parseString(toolsDescription).getAsJsonArray();
-                requestMap.put("tools", toolsArray);
-            }
-            
-            String requestBody = gson.toJson(requestMap);
+            String requestBody = chatAdapter.buildRequestBody(messages, toolsDescription, model, maxTokens, temperature);
             
             Request request = new Request.Builder()
                     .url(apiUrl)
@@ -131,107 +94,9 @@ public class LLMClientImpl implements LLMClient {
     }
     
     /**
-     * Parses the LLM API JSON response using Gson.
+     * Parses the LLM API JSON response.
      */
     LLMResponse parseResponse(String jsonResponse) {
-        if (jsonResponse == null || jsonResponse.isEmpty()) {
-            return LLMResponse.error("Empty response from LLM");
-        }
-        
-        try {
-            JsonObject root = JsonParser.parseString(jsonResponse).getAsJsonObject();
-            
-            // Extract text content from first choice
-            String text = "";
-            if (root.has("choices")) {
-                JsonArray choices = root.getAsJsonArray("choices");
-                if (choices != null && choices.size() > 0) {
-                    JsonObject firstChoice = choices.get(0).getAsJsonObject();
-                    if (firstChoice.has("message")) {
-                        JsonObject message = firstChoice.getAsJsonObject("message");
-                        if (message.has("content") && !message.get("content").isJsonNull()) {
-                            text = message.get("content").getAsString();
-                        }
-                        
-                        // Extract tool calls from message
-                        if (message.has("tool_calls")) {
-                            List<ToolCall> toolCalls;
-                            try {
-                                toolCalls = extractToolCalls(message.getAsJsonArray("tool_calls"));
-                            } catch (IllegalArgumentException e) {
-                                return LLMResponse.error("Invalid tool_calls in LLM response: " + e.getMessage());
-                            }
-                            return new LLMResponse(text, toolCalls);
-                        }
-                    }
-                }
-            }
-            
-            return new LLMResponse(text, null);
-            
-        } catch (Exception e) {
-            System.err.println("Failed to parse LLM response: " + e.getMessage());
-            System.err.println("Response: " + jsonResponse);
-            return LLMResponse.error("Failed to parse LLM response: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * Extracts tool calls from JSON array.
-     */
-    private List<ToolCall> extractToolCalls(JsonArray toolCallsArray) {
-        List<ToolCall> toolCalls = new ArrayList<>();
-        
-        if (toolCallsArray == null) {
-            return toolCalls;
-        }
-        
-        for (JsonElement element : toolCallsArray) {
-            try {
-                JsonObject toolCall = element.getAsJsonObject();
-                String id = toolCall.has("id") ? toolCall.get("id").getAsString() : null;
-                
-                // Handle function format
-                if (toolCall.has("function")) {
-                    JsonObject function = toolCall.getAsJsonObject("function");
-                    String name = function.get("name").getAsString();
-                    
-                    String arguments = "{}";
-                    if (function.has("arguments")) {
-                        JsonElement args = function.get("arguments");
-                        if (args.isJsonObject()) {
-                            arguments = args.getAsJsonObject().toString();
-                        } else {
-                            arguments = args.getAsString();
-                        }
-                    }
-                    
-                    toolCalls.add(new ToolCall(id, name, arguments));
-                } else {
-                    throw new IllegalArgumentException("tool call is missing function");
-                }
-            } catch (Exception e) {
-                throw new IllegalArgumentException("malformed tool call: " + e.getMessage(), e);
-            }
-        }
-        
-        return toolCalls;
-    }
-
-    private List<Map<String, Object>> formatToolCalls(List<ToolCall> toolCalls) {
-        List<Map<String, Object>> formatted = new ArrayList<>();
-        for (ToolCall toolCall : toolCalls) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("id", toolCall.getId());
-            item.put("type", "function");
-
-            Map<String, Object> function = new HashMap<>();
-            function.put("name", toolCall.getToolName());
-            function.put("arguments", toolCall.getArguments());
-            item.put("function", function);
-
-            formatted.add(item);
-        }
-        return formatted;
+        return responseParser.parse(jsonResponse);
     }
 }
