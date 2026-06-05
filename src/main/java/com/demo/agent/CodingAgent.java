@@ -14,6 +14,7 @@ import com.demo.tools.ToolSpec;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Main coding agent that orchestrates the AI coding workflow.
@@ -30,6 +31,7 @@ public class CodingAgent {
     private final Map<String, Tool> tools;
     private final AgentLoop agentLoop;
     private final Config config;
+    private final AgentObserver observer;
     private Context conversation;
     
     /**
@@ -43,13 +45,18 @@ public class CodingAgent {
     }
 
     public CodingAgent(Config config) {
+        this(config, new ConsoleAgentObserver());
+    }
+
+    public CodingAgent(Config config, AgentObserver observer) {
         this.config = config;
+        this.observer = Objects.requireNonNull(observer, "observer");
         this.llmClient = createLLMClient();
         
         this.tools = new HashMap<>();
         registerTools();
         
-        this.agentLoop = new AgentLoop(llmClient, tools, config.getMaxIterations());
+        this.agentLoop = new AgentLoop(llmClient, tools, config.getMaxIterations(), observer);
         this.conversation = new Context();
         
         // Set tool descriptions on context
@@ -62,11 +69,12 @@ public class CodingAgent {
      */
     private LLMClient createLLMClient() {
         if (config.isConfigured()) {
-            System.out.println("Using LLM client with model: " + config.getModel());
+            observer.onLlmClientSelected("Using LLM client with model: " + config.getModel());
             return new LLMClientImpl(config);
         } else {
-            System.out.println("API key not configured. Using Dummy client.");
-            System.out.println("To use real LLM, set LLM_API_KEY environment variable or configure in config.yaml");
+            observer.onLlmClientSelected("API key not configured. Using Dummy client.");
+            observer.onLlmClientSelected(
+                    "To use real LLM, set LLM_API_KEY environment variable or configure in config.yaml");
             return new DummyLLMClientImpl();
         }
     }
@@ -94,7 +102,7 @@ public class CodingAgent {
      * @param task The user's coding task (e.g., "write a fibonacci program")
      */
     public void execute(String task) {
-        System.out.println("Starting agent execution...");
+        observer.onAgentStarted("Starting agent execution...");
         
         // Create a fresh context for single execution
         Context singleContext = new Context();
@@ -103,7 +111,7 @@ public class CodingAgent {
         
         agentLoop.run(singleContext);
         
-        System.out.println("Agent execution completed.");
+        observer.onAgentCompleted("Agent execution completed.");
     }
     
     /**
@@ -115,7 +123,7 @@ public class CodingAgent {
      * @param task The user's coding task
      */
     public void executeWithHistory(String task) {
-        System.out.println("Starting agent execution with history...");
+        observer.onAgentStarted("Starting agent execution with history...");
         
         // Add user message to conversation context
         conversation.addUserMessage(task);
@@ -123,7 +131,7 @@ public class CodingAgent {
         // Run agent loop with the conversation context
         agentLoop.run(conversation);
         
-        System.out.println("Agent execution completed.");
+        observer.onAgentCompleted("Agent execution completed.");
     }
     
     /**

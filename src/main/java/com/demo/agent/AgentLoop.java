@@ -7,6 +7,7 @@ import com.demo.model.ToolResult;
 import com.demo.tools.Tool;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * The core agent loop that implements the think-decide-execute-observe cycle.
@@ -28,6 +29,7 @@ public class AgentLoop {
     
     private final LLMClient llmClient;
     private final Map<String, Tool> tools;
+    private final AgentObserver observer;
     private static final int MAX_ITERATIONS = 10;
     private final int maxIterations;
     
@@ -36,9 +38,18 @@ public class AgentLoop {
     }
 
     public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, int maxIterations) {
+        this(llmClient, tools, maxIterations, AgentObserver.noop());
+    }
+
+    public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, AgentObserver observer) {
+        this(llmClient, tools, MAX_ITERATIONS, observer);
+    }
+
+    public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, int maxIterations, AgentObserver observer) {
         this.llmClient = llmClient;
         this.tools = tools;
         this.maxIterations = maxIterations;
+        this.observer = Objects.requireNonNull(observer, "observer");
     }
     
     /**
@@ -64,7 +75,7 @@ public class AgentLoop {
         
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             int completedIterations = iteration + 1;
-            System.out.println("\n=== Iteration " + (iteration + 1) + " ===");
+            observer.onIterationStarted(completedIterations);
             
             // Build complete messages including system prompt
             List<Message> messages = context.buildMessagesForLLM();
@@ -73,21 +84,21 @@ public class AgentLoop {
             
             if (response == null) {
                 String errorText = "Failed to get response from LLM.";
-                System.out.println(errorText);
+                observer.onLlmError(errorText);
                 return AgentRunResult.llmError(errorText, completedIterations);
             }
 
             if (response.isError()) {
                 String errorText = "Error: " + response.getText();
                 context.addAssistantMessage(errorText);
-                System.out.println(errorText);
+                observer.onLlmError(errorText);
                 return AgentRunResult.llmError(errorText, completedIterations);
             }
             
             if (!response.hasToolCalls()) {
                 String finalText = response.getText();
                 context.addAssistantMessage(finalText);
-                System.out.println("Final response: " + finalText);
+                observer.onFinalResponse(finalText);
                 return AgentRunResult.completed(finalText, completedIterations);
             }
 
@@ -102,7 +113,7 @@ public class AgentLoop {
         }
         
         String errorText = "Maximum iterations reached. Task may not be complete.";
-        System.out.println(errorText);
+        observer.onMaxIterations(errorText);
         return AgentRunResult.maxIterations(errorText, maxIterations);
     }
     
@@ -133,7 +144,7 @@ public class AgentLoop {
             }
         }
         
-        System.out.println("Tool '" + toolName + "' result: " + result.getOutput());
+        observer.onToolResult(toolName, result);
         context.addToolResult(toolCall, result);
         return result;
     }

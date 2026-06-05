@@ -8,6 +8,10 @@ import com.demo.tools.Tool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -118,6 +122,39 @@ class AgentLoopTest {
         assertEquals("boom", toolMessage.getToolError());
     }
 
+    @Test
+    @DisplayName("Loop can run without console output while observer records events")
+    void canRunWithoutConsoleOutputAndRecordEvents() {
+        ToolCall toolCall = new ToolCall("call_1", "echo", "{}");
+        AtomicInteger calls = new AtomicInteger();
+        LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
+                ? new LLMClient.LLMResponse("", List.of(toolCall))
+                : new LLMClient.LLMResponse("done", null);
+        RecordingObserver observer = new RecordingObserver();
+        Context context = new Context();
+        context.addUserMessage("observe this");
+        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+
+        try {
+            System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
+            System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
+
+            AgentRunResult result = new AgentLoop(llm, Map.of("echo", new EchoTool()), observer).run(context);
+
+            assertEquals(AgentRunResult.Status.COMPLETED, result.getStatus());
+        } finally {
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+
+        assertEquals("", stdout.toString(StandardCharsets.UTF_8));
+        assertEquals("", stderr.toString(StandardCharsets.UTF_8));
+        assertEquals(List.of("iteration:1", "tool:echo:ok", "iteration:2", "final:done"), observer.events);
+    }
+
     private static class EchoTool implements Tool {
         @Override
         public String getName() {
@@ -149,6 +186,25 @@ class AgentLoopTest {
         @Override
         public ToolResult execute(String args) {
             return ToolResult.error(getName(), "boom");
+        }
+    }
+
+    private static class RecordingObserver implements AgentObserver {
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void onIterationStarted(int iteration) {
+            events.add("iteration:" + iteration);
+        }
+
+        @Override
+        public void onFinalResponse(String response) {
+            events.add("final:" + response);
+        }
+
+        @Override
+        public void onToolResult(String toolName, ToolResult result) {
+            events.add("tool:" + toolName + ":" + result.getOutput());
         }
     }
 }

@@ -14,7 +14,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("Default configuration exposes file tools but not shell")
     void defaultToolsExcludeShell() {
-        CodingAgent agent = new CodingAgent(Config.defaults());
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("read_file"));
@@ -26,7 +26,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("Tool descriptions include argument schemas")
     void toolDescriptionsIncludeSchemas() {
-        CodingAgent agent = new CodingAgent(Config.defaults());
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("\"required\":[\"path\"]"));
@@ -36,7 +36,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("Conversation prompt includes required parameters from tool specs")
     void conversationPromptIncludesRequiredParametersFromToolSpecs() {
-        CodingAgent agent = new CodingAgent(Config.defaults());
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
         String prompt = agent.getConversation().buildSystemPrompt();
 
         assertTrue(prompt.contains("read_file"));
@@ -58,7 +58,7 @@ class CodingAgentTest {
             Set.of("run_shell")
         );
 
-        CodingAgent agent = new CodingAgent(config);
+        CodingAgent agent = new CodingAgent(config, AgentObserver.noop());
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("run_shell"));
@@ -70,7 +70,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("setConversation injects current tool specs")
     void setConversationInjectsToolSpecs() {
-        CodingAgent agent = new CodingAgent(Config.defaults());
+        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
         Context restored = new Context();
 
         agent.setConversation(restored);
