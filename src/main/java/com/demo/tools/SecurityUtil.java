@@ -15,10 +15,12 @@ import java.util.Set;
 public final class SecurityUtil {
 
     private static final Set<String> BLOCKED_PATH_PATTERNS = Set.of(
-        "..", "~", "$", "Windows\\System32", "Windows\\SysWOW64",
-        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/",
-        ".ssh", ".git/config", "credentials", "secrets", "keys",
-        ".env", "password", "token", "api_key"
+        "windows/system32", "windows/syswow64",
+        "/etc/", "/usr/", "/bin/", "/sbin/", "/var/", "/root/"
+    );
+
+    private static final Set<String> BLOCKED_PATH_COMPONENTS = Set.of(
+        ".ssh", ".env", "credentials", "secrets", "keys", "password", "token", "api_key"
     );
 
     private static final Set<String> BLOCKED_COMMANDS = Set.of(
@@ -31,7 +33,7 @@ public final class SecurityUtil {
         ".java", ".kt", ".scala", ".py", ".js", ".ts", ".jsx", ".tsx",
         ".html", ".css", ".scss", ".json", ".xml", ".yaml", ".yml",
         ".md", ".txt", ".log", ".sh", ".bat", ".ps1", ".sql",
-        ".gradle", ".kts", ".properties", ".env"
+        ".gradle", ".kts", ".properties"
     );
 
     private SecurityUtil() {
@@ -189,9 +191,17 @@ public final class SecurityUtil {
      */
     public static boolean isDangerousPath(String path) {
         if (path == null) return true;
-        String lowerPath = path.toLowerCase();
+        String lowerPath = path.toLowerCase().replace('\\', '/');
         for (String pattern : BLOCKED_PATH_PATTERNS) {
-            if (lowerPath.contains(pattern.toLowerCase())) {
+            if (lowerPath.contains(pattern)) {
+                return true;
+            }
+        }
+        if (lowerPath.contains(".git/config")) {
+            return true;
+        }
+        for (String component : lowerPath.split("/+")) {
+            if (BLOCKED_PATH_COMPONENTS.contains(component)) {
                 return true;
             }
         }
