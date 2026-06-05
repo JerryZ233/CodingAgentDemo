@@ -3,14 +3,11 @@ package com.demo.agent;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import com.demo.model.ToolResult;
-import com.demo.tools.ToolDescriptions;
 import com.demo.tools.ToolSpec;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Manages conversation history for the AI agent.
@@ -24,19 +21,12 @@ import java.util.Set;
  * compatibility but does not infer prompt details from the schema.
  */
 public class Context {
-    
-    private static final String TOOLS_PLACEHOLDER = "{TOOLS}";
-    private static final int DEFAULT_MAX_HISTORY_CHARS = 64_000;
-    private static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
-    
+
     private final List<Message> messages;
     private final ConversationStore conversationStore;
     private final Memory memory;
-    private String systemPromptTemplate;
-    private String toolDescriptions;
-    private List<ToolSpec> toolSpecs;
-    private int maxHistoryChars;
-    private int maxHistoryMessages;
+    private final PromptBuilder promptBuilder;
+    private ContextWindowStrategy contextWindowStrategy;
     
     /**
      * Creates a new Context with the default conversation store.
@@ -67,11 +57,8 @@ public class Context {
         this.messages = new ArrayList<>();
         this.conversationStore = Objects.requireNonNull(conversationStore, "conversationStore");
         this.memory = memory;
-        this.systemPromptTemplate = getDefaultSystemPromptTemplate();
-        this.toolDescriptions = "";
-        this.toolSpecs = List.of();
-        this.maxHistoryChars = DEFAULT_MAX_HISTORY_CHARS;
-        this.maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES;
+        this.promptBuilder = new PromptBuilder();
+        this.contextWindowStrategy = new ContextWindowStrategy();
     }
 
     private static Memory extractMemory(ConversationStore conversationStore) {
@@ -82,79 +69,12 @@ public class Context {
     }
     
     /**
-     * Returns the default system prompt template.
-     * The placeholder {TOOLS} will be replaced with actual tool descriptions.
-     */
-    private String getDefaultSystemPromptTemplate() {
-        return "You are an AI coding assistant with the ability to execute tools to accomplish coding tasks.\n\n" +
-               "## Your Role\n" +
-               "You help users with programming tasks by understanding their requirements, writing code,\n" +
-               "executing commands, and managing files using the available tools.\n\n" +
-               "## Available Tools\n" +
-               "You have access to the following tools:\n" +
-               TOOLS_PLACEHOLDER + "\n\n" +
-               "## Tool Use\n" +
-               "When a task requires reading files, writing files, listing directories, or running another available tool,\n" +
-               "use the tool calling mechanism provided by the API. Do not describe a tool call in prose.\n" +
-               "After receiving the tool result, decide whether another tool call is needed or provide your final answer.\n\n" +
-               "## Workflow\n" +
-               "For each user request, follow this cycle:\n" +
-               "1. THINK: Analyze the request and determine what needs to be done\n" +
-               "2. DECIDE: Decide if you need to use tools or can answer directly\n" +
-               "3. EXECUTE: If using tools, call the appropriate API tool\n" +
-               "4. OBSERVE: Read the tool result returned to you\n" +
-               "5. RESPOND: Provide a clear response to the user\n\n" +
-               "## Tool Calling Rules\n" +
-               "- Use tools ONLY when necessary to complete the user's request\n" +
-               "- If the user asks a question you can answer directly (like general knowledge),\n" +
-               "  respond without using tools\n" +
-               "- If the user asks you to create files, run commands, read files, or perform\n" +
-               "  any action that requires tool use, call the appropriate tool\n" +
-               "- Always check tool results before providing final response\n\n" +
-               "## Response Guidelines\n" +
-               "- Be concise but informative\n" +
-               "- Explain what you're going to do before doing it\n" +
-               "- Show the user the results of tool executions\n" +
-               "- If something goes wrong, explain the error and try to fix it\n\n" +
-               "## Constraints\n" +
-               "- All file operations must be within the designated workspace directory\n" +
-               "- Do not execute destructive commands (rm -rf, format, etc.)\n" +
-               "- Always confirm potentially dangerous operations with the user first";
-    }
-    
-    /**
      * Builds the complete system prompt by injecting tool descriptions into the template.
      * 
      * @return The complete system prompt with tool descriptions
      */
     public String buildSystemPrompt() {
-        if (systemPromptTemplate == null) {
-            return "";
-        }
-        
-        // Format tool descriptions as a readable list
-        String formattedTools = formatToolDescriptionsForPrompt();
-        
-        // Replace placeholder with actual tool descriptions
-        return systemPromptTemplate.replace(TOOLS_PLACEHOLDER, formattedTools);
-    }
-    
-    /**
-     * Formats tool descriptions for inclusion in the system prompt.
-     * Uses structured tool specs so the prompt and API schema share one source.
-     * 
-     * @return Formatted tool descriptions string
-     */
-    private String formatToolDescriptionsForPrompt() {
-        if (toolSpecs != null && !toolSpecs.isEmpty()) {
-            return ToolDescriptions.toPromptText(toolSpecs);
-        }
-
-        if (toolDescriptions != null && !toolDescriptions.isEmpty()) {
-            return toolDescriptions;
-        }
-
-        return "(No tools available)";
+        return promptBuilder.buildSystemPrompt();
     }
     
     /**
@@ -164,7 +84,7 @@ public class Context {
      * @param systemPromptTemplate The system prompt template
      */
     public void setSystemPromptTemplate(String systemPromptTemplate) {
-        this.systemPromptTemplate = systemPromptTemplate;
+        promptBuilder.setSystemPromptTemplate(systemPromptTemplate);
     }
     
     /**
@@ -174,7 +94,7 @@ public class Context {
      * @param systemPrompt The system prompt to use
      */
     public void setSystemPrompt(String systemPrompt) {
-        this.systemPromptTemplate = systemPrompt;
+        promptBuilder.setSystemPromptTemplate(systemPrompt);
     }
     
     /**
@@ -193,8 +113,7 @@ public class Context {
      * @param toolDescriptions The tool descriptions JSON
      */
     public void setToolDescriptions(String toolDescriptions) {
-        this.toolDescriptions = toolDescriptions;
-        this.toolSpecs = List.of();
+        promptBuilder.setToolDescriptions(toolDescriptions);
     }
 
     /**
@@ -204,8 +123,7 @@ public class Context {
      * @param toolSpecs The available tool specs
      */
     public void setToolSpecs(Collection<ToolSpec> toolSpecs) {
-        this.toolSpecs = toolSpecs == null ? List.of() : List.copyOf(toolSpecs);
-        this.toolDescriptions = ToolDescriptions.toOpenAIToolsJson(this.toolSpecs);
+        promptBuilder.setToolSpecs(toolSpecs);
     }
 
     /**
@@ -214,7 +132,7 @@ public class Context {
      * @return The tool specs
      */
     public List<ToolSpec> getToolSpecs() {
-        return toolSpecs;
+        return promptBuilder.getToolSpecs();
     }
     
     /**
@@ -223,7 +141,7 @@ public class Context {
      * @return The tool descriptions
      */
     public String getToolDescriptions() {
-        return toolDescriptions;
+        return promptBuilder.getToolDescriptions();
     }
 
     /**
@@ -234,14 +152,7 @@ public class Context {
      * @param maxHistoryMessages Maximum number of conversation messages to include
      */
     public void setContextWindowBudget(int maxHistoryChars, int maxHistoryMessages) {
-        if (maxHistoryChars <= 0) {
-            throw new IllegalArgumentException("maxHistoryChars must be positive");
-        }
-        if (maxHistoryMessages <= 0) {
-            throw new IllegalArgumentException("maxHistoryMessages must be positive");
-        }
-        this.maxHistoryChars = maxHistoryChars;
-        this.maxHistoryMessages = maxHistoryMessages;
+        this.contextWindowStrategy = new ContextWindowStrategy(maxHistoryChars, maxHistoryMessages);
     }
     
     /**
@@ -263,93 +174,9 @@ public class Context {
         }
         
         // Add recent conversation messages within the context budget.
-        llmMessages.addAll(trimHistoryForLLM());
+        llmMessages.addAll(contextWindowStrategy.selectHistory(messages));
         
         return llmMessages;
-    }
-
-    private List<Message> trimHistoryForLLM() {
-        List<List<Message>> blocks = buildAtomicHistoryBlocks();
-        List<Message> selected = new ArrayList<>();
-        int selectedChars = 0;
-        int selectedMessages = 0;
-
-        for (int i = blocks.size() - 1; i >= 0; i--) {
-            List<Message> block = blocks.get(i);
-            int blockChars = estimateMessagesChars(block);
-            int blockMessages = block.size();
-            boolean fits = selectedMessages + blockMessages <= maxHistoryMessages
-                    && selectedChars + blockChars <= maxHistoryChars;
-
-            if (fits || selected.isEmpty()) {
-                selected.addAll(0, block);
-                selectedChars += blockChars;
-                selectedMessages += blockMessages;
-            } else {
-                break;
-            }
-        }
-
-        return selected;
-    }
-
-    private List<List<Message>> buildAtomicHistoryBlocks() {
-        List<List<Message>> blocks = new ArrayList<>();
-
-        for (int i = 0; i < messages.size(); i++) {
-            Message message = messages.get(i);
-            List<Message> block = new ArrayList<>();
-            block.add(message);
-
-            if (hasToolCalls(message)) {
-                Set<String> expectedToolCallIds = new HashSet<>();
-                for (ToolCall toolCall : message.getToolCalls()) {
-                    expectedToolCallIds.add(toolCall.getId());
-                }
-
-                while (i + 1 < messages.size()) {
-                    Message next = messages.get(i + 1);
-                    if (!"tool".equals(next.getRole()) || !expectedToolCallIds.contains(next.getToolCallId())) {
-                        break;
-                    }
-                    block.add(next);
-                    i++;
-                }
-            }
-
-            blocks.add(block);
-        }
-
-        return blocks;
-    }
-
-    private boolean hasToolCalls(Message message) {
-        return message.getToolCalls() != null && !message.getToolCalls().isEmpty();
-    }
-
-    private int estimateMessagesChars(List<Message> messages) {
-        int total = 0;
-        for (Message message : messages) {
-            total += estimateMessageChars(message);
-        }
-        return total;
-    }
-
-    private int estimateMessageChars(Message message) {
-        int total = length(message.getRole()) + length(message.getContent())
-                + length(message.getToolCallId()) + length(message.getToolName());
-
-        if (message.getToolCalls() != null) {
-            for (ToolCall toolCall : message.getToolCalls()) {
-                total += length(toolCall.getId()) + length(toolCall.getToolName()) + length(toolCall.getArguments());
-            }
-        }
-
-        return total;
-    }
-
-    private int length(String value) {
-        return value == null ? 0 : value.length();
     }
     
     /**
