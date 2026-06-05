@@ -159,6 +159,41 @@ class AgentLoopTest {
     }
 
     @Test
+    @DisplayName("Agent loop appends structured execution events")
+    void appendsStructuredExecutionEvents() {
+        ToolCall toolCall = new ToolCall("call_1", "echo", "{}");
+        AtomicInteger calls = new AtomicInteger();
+        LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
+                ? new LLMClient.LLMResponse("", List.of(toolCall))
+                : new LLMClient.LLMResponse("done", null);
+        InMemoryAgentEventLog eventLog = new InMemoryAgentEventLog();
+        Context context = new Context();
+        context.addUserMessage("trace this");
+
+        AgentRunResult result = new AgentLoop(
+                llm,
+                Map.of("echo", new EchoTool()),
+                5,
+                AgentObserver.noop(),
+                eventLog
+        ).run(context);
+
+        assertEquals(AgentRunResult.Status.COMPLETED, result.getStatus());
+        assertEquals(List.of(
+                AgentEvent.Type.RUN_STARTED,
+                AgentEvent.Type.ITERATION_STARTED,
+                AgentEvent.Type.LLM_RESPONSE,
+                AgentEvent.Type.TOOL_RESULT,
+                AgentEvent.Type.ITERATION_STARTED,
+                AgentEvent.Type.LLM_RESPONSE,
+                AgentEvent.Type.FINAL_RESPONSE,
+                AgentEvent.Type.RUN_COMPLETED
+        ), eventLog.getEvents().stream().map(AgentEvent::getType).toList());
+        assertEquals("echo", eventLog.getEvents().get(3).getToolName());
+        assertEquals(AgentRunResult.Status.COMPLETED, eventLog.getEvents().get(7).getStatus());
+    }
+
+    @Test
     @DisplayName("Loop can run without console output while observer records events")
     void canRunWithoutConsoleOutputAndRecordEvents() {
         ToolCall toolCall = new ToolCall("call_1", "echo", "{}");

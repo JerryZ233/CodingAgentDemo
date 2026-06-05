@@ -30,6 +30,7 @@ public class AgentLoop {
     private final LLMClient llmClient;
     private final Map<String, Tool> tools;
     private final AgentObserver observer;
+    private final AgentEventLog eventLog;
     private static final int MAX_ITERATIONS = 10;
     private final int maxIterations;
     
@@ -46,10 +47,16 @@ public class AgentLoop {
     }
 
     public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, int maxIterations, AgentObserver observer) {
+        this(llmClient, tools, maxIterations, observer, AgentEventLog.noop());
+    }
+
+    public AgentLoop(LLMClient llmClient, Map<String, Tool> tools, int maxIterations,
+            AgentObserver observer, AgentEventLog eventLog) {
         this.llmClient = llmClient;
         this.tools = tools;
         this.maxIterations = maxIterations;
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.eventLog = Objects.requireNonNull(eventLog, "eventLog");
     }
     
     /**
@@ -72,10 +79,12 @@ public class AgentLoop {
      */
     public AgentRunResult run(Context context) {
         String toolDescriptions = context.getToolDescriptions();
+        eventLog.append(AgentEvent.runStarted());
         
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             int completedIterations = iteration + 1;
             observer.onIterationStarted(completedIterations);
+            eventLog.append(AgentEvent.iterationStarted(completedIterations));
             
             // Build complete messages including system prompt
             List<Message> messages = context.buildMessagesForLLM();
@@ -85,33 +94,44 @@ public class AgentLoop {
             if (response == null) {
                 String errorText = "Failed to get response from LLM.";
                 observer.onLlmError(errorText);
-                return AgentRunResult.llmError(errorText, completedIterations);
+                eventLog.append(AgentEvent.llmError(completedIterations, errorText));
+                return complete(AgentRunResult.llmError(errorText, completedIterations));
             }
 
             if (response.isError()) {
                 String errorText = "Error: " + response.getText();
                 context.addAssistantMessage(errorText);
                 observer.onLlmError(errorText);
-                return AgentRunResult.llmError(errorText, completedIterations);
+                eventLog.append(AgentEvent.llmError(completedIterations, errorText));
+                return complete(AgentRunResult.llmError(errorText, completedIterations));
             }
+
+            eventLog.append(AgentEvent.llmResponse(completedIterations, response.getText()));
             
             if (!response.hasToolCalls()) {
                 String finalText = response.getText();
                 context.addAssistantMessage(finalText);
                 observer.onFinalResponse(finalText);
-                return AgentRunResult.completed(finalText, completedIterations);
+                eventLog.append(AgentEvent.finalResponse(completedIterations, finalText));
+                return complete(AgentRunResult.completed(finalText, completedIterations));
             }
 
             context.addAssistantToolCalls(response.getText(), response.getToolCalls());
             
             for (ToolCall toolCall : response.getToolCalls()) {
-                executeToolCall(toolCall, context);
+                executeToolCall(toolCall, context, completedIterations);
             }
         }
         
         String errorText = "Maximum iterations reached. Task may not be complete.";
         observer.onMaxIterations(errorText);
-        return AgentRunResult.maxIterations(errorText, maxIterations);
+        eventLog.append(AgentEvent.maxIterations(maxIterations, errorText));
+        return complete(AgentRunResult.maxIterations(errorText, maxIterations));
+    }
+
+    private AgentRunResult complete(AgentRunResult result) {
+        eventLog.append(AgentEvent.runCompleted(result));
+        return result;
     }
     
     /**
@@ -123,7 +143,7 @@ public class AgentLoop {
      * 3. Add a structured tool result message to conversation
      * 4. Handle errors gracefully
      */
-    private ToolResult executeToolCall(ToolCall toolCall, Context context) {
+    private ToolResult executeToolCall(ToolCall toolCall, Context context, int iteration) {
         String toolName = toolCall.getToolName();
         Tool tool = tools.get(toolName);
         
@@ -143,6 +163,7 @@ public class AgentLoop {
         
         observer.onToolResult(toolName, result);
         context.addToolResult(toolCall, result);
+        eventLog.append(AgentEvent.toolResult(iteration, toolName, result.getOutput()));
         return result;
     }
     
