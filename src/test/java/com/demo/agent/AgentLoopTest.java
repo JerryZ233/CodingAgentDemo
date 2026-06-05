@@ -85,41 +85,77 @@ class AgentLoopTest {
     }
 
     @Test
-    @DisplayName("Unknown tools are recorded as failed tool results")
-    void stopsOnUnknownTool() {
+    @DisplayName("Unknown tools are recorded and returned to the model")
+    void continuesAfterUnknownTool() {
         ToolCall toolCall = new ToolCall("call_missing", "missing", "{}");
-        LLMClient llm = (messages, toolsDescription) -> new LLMClient.LLMResponse("", List.of(toolCall));
+        AtomicInteger calls = new AtomicInteger();
+        LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
+                ? new LLMClient.LLMResponse("", List.of(toolCall))
+                : new LLMClient.LLMResponse("recovered from missing tool", null);
         Context context = new Context();
         context.addUserMessage("use a missing tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of()).run(context);
 
-        assertEquals(AgentRunResult.Status.TOOL_ERROR, result.getStatus());
-        assertEquals("Error: Tool 'missing' not found.", result.getMessage());
+        assertEquals(AgentRunResult.Status.COMPLETED, result.getStatus());
+        assertEquals("recovered from missing tool", result.getMessage());
         Message toolMessage = context.getMessages().get(2);
         assertEquals("tool", toolMessage.getRole());
         assertFalse(toolMessage.getToolSuccess());
         assertEquals("Error: Tool 'missing' not found.", toolMessage.getToolError());
         assertEquals(toolMessage.getToolError(), toolMessage.getContent());
+        assertEquals("assistant", context.getMessages().get(3).getRole());
+        assertEquals("recovered from missing tool", context.getMessages().get(3).getContent());
     }
 
     @Test
-    @DisplayName("Failed tools are recorded as failed tool results")
-    void stopsOnFailedToolResult() {
+    @DisplayName("Failed tools are recorded and returned to the model")
+    void continuesAfterFailedToolResult() {
         ToolCall toolCall = new ToolCall("call_fail", "fail", "{}");
-        LLMClient llm = (messages, toolsDescription) -> new LLMClient.LLMResponse("", List.of(toolCall));
+        AtomicInteger calls = new AtomicInteger();
+        LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
+                ? new LLMClient.LLMResponse("", List.of(toolCall))
+                : new LLMClient.LLMResponse("handled failure", null);
         Context context = new Context();
         context.addUserMessage("use a failing tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of("fail", new FailingTool())).run(context);
 
-        assertEquals(AgentRunResult.Status.TOOL_ERROR, result.getStatus());
-        assertEquals("boom", result.getMessage());
+        assertEquals(AgentRunResult.Status.COMPLETED, result.getStatus());
+        assertEquals("handled failure", result.getMessage());
         Message toolMessage = context.getMessages().get(2);
         assertEquals("tool", toolMessage.getRole());
         assertFalse(toolMessage.getToolSuccess());
         assertEquals("boom", toolMessage.getContent());
         assertEquals("boom", toolMessage.getToolError());
+        assertEquals("assistant", context.getMessages().get(3).getRole());
+        assertEquals("handled failure", context.getMessages().get(3).getContent());
+    }
+
+    @Test
+    @DisplayName("All tool calls are recorded even when one fails")
+    void recordsAllToolCallsWhenOneFails() {
+        ToolCall failingCall = new ToolCall("call_fail", "fail", "{}");
+        ToolCall echoCall = new ToolCall("call_echo", "echo", "{}");
+        AtomicInteger calls = new AtomicInteger();
+        LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
+                ? new LLMClient.LLMResponse("", List.of(failingCall, echoCall))
+                : new LLMClient.LLMResponse("saw both results", null);
+        Context context = new Context();
+        context.addUserMessage("use two tools");
+
+        AgentRunResult result = new AgentLoop(
+                llm,
+                Map.of("fail", new FailingTool(), "echo", new EchoTool())
+        ).run(context);
+
+        assertEquals(AgentRunResult.Status.COMPLETED, result.getStatus());
+        assertEquals("tool", context.getMessages().get(2).getRole());
+        assertFalse(context.getMessages().get(2).getToolSuccess());
+        assertEquals("tool", context.getMessages().get(3).getRole());
+        assertTrue(context.getMessages().get(3).getToolSuccess());
+        assertEquals("assistant", context.getMessages().get(4).getRole());
+        assertEquals("saw both results", context.getMessages().get(4).getContent());
     }
 
     @Test

@@ -105,10 +105,7 @@ public class AgentLoop {
             context.addAssistantToolCalls(response.getText(), response.getToolCalls());
             
             for (ToolCall toolCall : response.getToolCalls()) {
-                ToolResult result = executeToolCall(toolCall, context);
-                if (!result.isSuccess()) {
-                    return AgentRunResult.toolError(result.getOutput(), completedIterations);
-                }
+                executeToolCall(toolCall, context);
             }
         }
         
