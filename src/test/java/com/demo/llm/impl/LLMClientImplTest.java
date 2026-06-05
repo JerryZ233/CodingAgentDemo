@@ -4,6 +4,10 @@ import com.demo.llm.LLMClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,6 +57,23 @@ class LLMClientImplTest {
 
         assertTrue(response.isError());
         assertFalse(response.hasToolCalls());
+    }
+
+    @Test
+    @DisplayName("Invalid LLM JSON does not write to stderr")
+    void invalidJsonDoesNotWriteToStderr() {
+        LLMClientImpl client = new LLMClientImpl("http://localhost", "key", "model", 100, 0.0);
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+
+        try {
+            System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
+            client.parseResponse("not json");
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertEquals("", stderr.toString(StandardCharsets.UTF_8));
     }
 
     @Test

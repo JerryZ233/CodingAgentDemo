@@ -48,8 +48,6 @@ class OpenAIResponseParser {
 
             return new LLMResponse(text, null);
         } catch (Exception e) {
-            System.err.println("Failed to parse LLM response: " + e.getMessage());
-            System.err.println("Response: " + jsonResponse);
             return LLMResponse.error("Failed to parse LLM response: " + e.getMessage());
         }
     }

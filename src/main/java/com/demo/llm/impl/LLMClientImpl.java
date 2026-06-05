@@ -79,8 +79,9 @@ public class LLMClientImpl implements LLMClient {
             
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "No response body";
-                    System.err.println("LLM API error: " + response.code() + " - " + errorBody);
+                    if (response.body() != null) {
+                        response.body().close();
+                    }
                     return LLMResponse.error("Failed to get response from LLM: HTTP " + response.code());
                 }
                 
@@ -88,7 +89,6 @@ public class LLMClientImpl implements LLMClient {
                 return parseResponse(responseBody);
             }
         } catch (IOException e) {
-            System.err.println("LLM communication error: " + e.getMessage());
             return LLMResponse.error("Failed to communicate with LLM: " + e.getMessage());
         }
     }
