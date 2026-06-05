@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
@@ -98,6 +99,19 @@ class ShellRunToolTest {
 
         assertTrue(result.isSuccess(), result.getOutput());
         assertTrue(result.getOutput().contains("hello"), result.getOutput());
+    }
+
+    @Test
+    @DisplayName("Non-interrupt execution failures do not interrupt current thread")
+    void nonInterruptExecutionFailureDoesNotInterruptThread() throws Exception {
+        Thread.interrupted();
+        Path fileInsteadOfDirectory = Files.writeString(tempDir.resolve("not-a-directory.txt"), "content");
+        ShellRunTool tool = new ShellRunTool(fileInsteadOfDirectory, Duration.ofSeconds(5), 4096);
+
+        ToolResult result = tool.execute("{\"command\":\"echo hello\"}");
+
+        assertFalse(result.isSuccess());
+        assertFalse(Thread.currentThread().isInterrupted());
     }
 
     private boolean isWindows() {

@@ -166,8 +166,10 @@ public class ShellRunTool implements Tool {
                 }
                 return ToolResult.error(getName(), errorMessage);
             }
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return ToolResult.error(getName(), "Execution interrupted: " + e.getMessage());
+        } catch (Exception e) {
             return ToolResult.error(getName(), "Execution failed: " + e.getMessage());
         } finally {
             executor.shutdownNow();
