@@ -9,7 +9,6 @@ import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -35,12 +34,6 @@ public class ShellRunTool implements Tool {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
     private static final int DEFAULT_OUTPUT_LIMIT = 64 * 1024;
-
-    private static final Set<String> BLOCKED_COMMANDS = Set.of(
-        "rm -rf", "del /f /s", "format", "mkfs", "dd if=",
-        "shutdown", "reboot", "halt", "init 0", "kill -9",
-        "curl | sh", "wget | sh", "eval", "exec "
-    );
 
     private final Duration timeout;
     private final int outputLimit;
