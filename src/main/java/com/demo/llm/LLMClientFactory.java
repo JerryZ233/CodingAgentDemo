@@ -3,7 +3,7 @@ package com.demo.llm;
 import com.demo.agent.AgentObserver;
 import com.demo.config.Config;
 import com.demo.llm.impl.DummyLLMClientImpl;
-import com.demo.llm.impl.LLMClientImpl;
+import com.demo.llm.impl.OpenAICompatibleLLMClient;
 import java.util.Objects;
 
 /**
@@ -20,7 +20,7 @@ public final class LLMClientFactory {
 
         if (config.isConfigured()) {
             selectedObserver.onLlmClientSelected("Using LLM client with model: " + config.getModel());
-            return new LLMClientImpl(config);
+            return new OpenAICompatibleLLMClient(config);
         }
 
         selectedObserver.onLlmClientSelected("API key not configured. Using Dummy client.");

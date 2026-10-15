@@ -17,8 +17,8 @@ repositories {
 }
 
 dependencies {
-    // HTTP client
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Model API client (owns HTTP transport and protocol serialization)
+    implementation("com.openai:openai-java:4.81.0")
     
     // YAML parsing
     implementation("org.yaml:snakeyaml:2.2")

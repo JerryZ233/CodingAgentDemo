@@ -25,7 +25,7 @@ CodingAgentDemo/
 |   |-- agent/           # Agent orchestration, context, observers and conversation storage
 |   |-- config/          # YAML and environment configuration
 |   |-- llm/             # LLM client interface and factory
-|   |   `-- impl/        # OpenAI-compatible client adapter/parser implementations
+|   |   `-- impl/        # OpenAI Java SDK client and domain/SDK adapters
 |   |-- model/           # Message, tool call and tool result models
 |   `-- tools/           # Tool interface, registry, specs and implementations
 |-- build.gradle.kts     # Gradle build configuration
@@ -68,6 +68,34 @@ You can also pass a custom task as a command-line argument:
 
 `config.yaml` contains non-secret defaults. Set `LLM_API_KEY` in the environment for real LLM access. The shell tool is disabled by default. If `run_shell` is enabled, it still applies only a narrow in-process policy: platform shell names are allowlisted, unknown shell names are rejected instead of falling back, command names must be on a small allowlist, and shell metacharacters, pipes, redirects, and background execution are blocked. This reduces accidental risk but is not an OS-level sandbox, permission boundary, or human approval flow.
 
+## Model client configuration
+
+Model communication uses the official OpenAI Java SDK 4.81.0 and the synchronous
+Chat Completions API. The SDK handles HTTP transport and JSON serialization;
+the application maps domain messages and tool schemas to SDK types and maps SDK
+responses back to `LLMResponse`. `AgentLoop` continues to execute tools itself.
+
+Existing `llm.api_url` / `LLM_API_URL` configuration remains supported. Both a
+complete endpoint and a base URL are accepted, for example:
+
+```text
+https://api.openai.com/v1/chat/completions
+https://api.openai.com/v1
+https://example.com/custom/api/v3/chat/completions/
+```
+
+The client removes a final `/chat/completions` (and optional trailing slash)
+before passing the base URL to the SDK, preserving custom path prefixes.
+Only HTTP(S) URLs without embedded credentials, query parameters or fragments
+are accepted. API keys and model settings still come from the project's YAML /
+`LLM_*` environment configuration, not the SDK's `OPENAI_*` environment variables.
+
+Each client reuses its SDK connection pool, has a 120-second request timeout,
+and disables SDK retries. HTTP and transport/response decoding errors become
+`LLMResponse.error()` values without logging raw responses. Compatibility with
+third-party endpoints depends on their Chat Completions and function-calling
+support; this migration does not add provider-specific features.
+
 ## How to Run Tests
 
 ```bash
@@ -81,7 +109,7 @@ You can also pass a custom task as a command-line argument:
 - **agent**: Contains `Main`, `CodingAgent`, `AgentLoop`, `Context`, and `Memory`
 - **config**: Contains YAML and environment configuration loading
 - **llm**: Contains `LLMClient` and `LLMResponse`
-- **llm.impl**: Contains `LLMClientImpl` and `DummyLLMClientImpl`
+- **llm.impl**: Contains `OpenAICompatibleLLMClient` and `DummyLLMClientImpl`
 - **model**: Contains `Message`, `ToolCall`, and `ToolResult`
 - **tools**: Contains the `Tool` interface and concrete file/shell tool implementations
 

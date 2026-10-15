@@ -3,81 +3,89 @@ package com.demo.llm.impl;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.openai.core.JsonValue;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.FunctionParameters;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
+import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionFunctionTool;
+import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
+import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
+import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
+import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.List;
 
-/**
- * Formats domain messages as OpenAI-compatible chat completion requests.
- */
+/** Maps domain messages to SDK types; the SDK owns wire serialization. */
 class OpenAIChatAdapter {
+    private static final Gson GSON = new Gson();
 
-    private final Gson gson;
-
-    OpenAIChatAdapter() {
-        this.gson = new GsonBuilder().serializeNulls().create();
-    }
-
-    String buildRequestBody(List<Message> messages, String toolsDescription, String model,
-            int maxTokens, double temperature) {
-        JsonObject request = new JsonObject();
-        request.addProperty("model", model);
-        request.addProperty("max_tokens", maxTokens);
-        request.addProperty("temperature", temperature);
-        request.add("messages", formatMessages(messages));
-
-        if (toolsDescription != null && !toolsDescription.isEmpty()) {
-            JsonArray toolsArray = JsonParser.parseString(toolsDescription).getAsJsonArray();
-            request.add("tools", toolsArray);
+    ChatCompletionCreateParams buildRequest(List<Message> messages, String toolsDescription,
+            String model, int maxTokens, double temperature) {
+        try {
+            return buildRequestInternal(messages, toolsDescription, model, maxTokens, temperature);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid message or tool definition", e);
         }
-
-        return gson.toJson(request);
     }
 
-    private JsonArray formatMessages(List<Message> messages) {
-        JsonArray messageArray = new JsonArray();
+    private ChatCompletionCreateParams buildRequestInternal(List<Message> messages, String toolsDescription,
+            String model, int maxTokens, double temperature) {
+        // Keep max_tokens for the project's existing Chat Completions endpoints.
+        var request = ChatCompletionCreateParams.builder()
+                .model(model).maxTokens((long) maxTokens).temperature(temperature);
         for (Message message : messages) {
-            JsonObject item = new JsonObject();
-            item.addProperty("role", message.getRole());
-            if (message.getContent() == null) {
-                item.add("content", JsonNull.INSTANCE);
-            } else {
-                item.addProperty("content", message.getContent());
+            switch (message.getRole()) {
+                case "system" -> request.addMessage(ChatCompletionSystemMessageParam.builder()
+                        .content(message.getContent()).build());
+                case "user" -> request.addMessage(ChatCompletionUserMessageParam.builder()
+                        .content(message.getContent()).build());
+                case "assistant" -> {
+                    var assistant = ChatCompletionAssistantMessageParam.builder();
+                    if (message.getContent() != null) {
+                        assistant.content(message.getContent());
+                    }
+                    if (message.getToolCalls() != null) {
+                        for (ToolCall call : message.getToolCalls()) {
+                            assistant.addToolCall(ChatCompletionMessageFunctionToolCall.builder()
+                                    .id(call.getId())
+                                    .function(ChatCompletionMessageFunctionToolCall.Function.builder()
+                                            .name(call.getToolName()).arguments(call.getArguments()).build())
+                                    .build());
+                        }
+                    }
+                    request.addMessage(assistant.build());
+                }
+                case "tool" -> request.addMessage(ChatCompletionToolMessageParam.builder()
+                        .toolCallId(message.getToolCallId()).content(message.getContent()).build());
+                default -> throw new IllegalArgumentException("Unsupported message role");
             }
-
-            if ("assistant".equals(message.getRole())
-                    && message.getToolCalls() != null
-                    && !message.getToolCalls().isEmpty()) {
-                item.add("tool_calls", formatToolCalls(message.getToolCalls()));
-            }
-
-            if ("tool".equals(message.getRole())) {
-                item.addProperty("tool_call_id", message.getToolCallId());
-                item.addProperty("name", message.getToolName());
-            }
-
-            messageArray.add(item);
         }
-        return messageArray;
-    }
-
-    private JsonArray formatToolCalls(List<ToolCall> toolCalls) {
-        JsonArray formatted = new JsonArray();
-        for (ToolCall toolCall : toolCalls) {
-            JsonObject item = new JsonObject();
-            item.addProperty("id", toolCall.getId());
-            item.addProperty("type", "function");
-
-            JsonObject function = new JsonObject();
-            function.addProperty("name", toolCall.getToolName());
-            function.addProperty("arguments", toolCall.getArguments());
-            item.add("function", function);
-
-            formatted.add(item);
+        if (toolsDescription != null && !toolsDescription.isBlank()) {
+            for (JsonElement element : JsonParser.parseString(toolsDescription).getAsJsonArray()) {
+                var tool = element.getAsJsonObject();
+                if (!"function".equals(tool.get("type").getAsString())) {
+                    throw new IllegalArgumentException("Only function tools are supported");
+                }
+                var function = tool.getAsJsonObject("function");
+                var definition = FunctionDefinition.builder().name(function.get("name").getAsString());
+                if (function.has("description")) {
+                    definition.description(function.get("description").getAsString());
+                }
+                if (function.has("parameters")) {
+                    var parameters = FunctionParameters.builder();
+                    function.getAsJsonObject("parameters").entrySet().forEach(entry ->
+                            parameters.putAdditionalProperty(entry.getKey(),
+                                    JsonValue.from(GSON.fromJson(entry.getValue(), Object.class))));
+                    definition.parameters(parameters.build());
+                }
+                if (function.has("strict")) {
+                    definition.strict(function.get("strict").getAsBoolean());
+                }
+                request.addTool(ChatCompletionFunctionTool.builder().function(definition.build()).build());
+            }
         }
-        return formatted;
+        return request.build();
     }
 }
