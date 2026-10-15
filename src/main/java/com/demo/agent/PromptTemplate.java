@@ -8,7 +8,7 @@ import java.util.Objects;
 public final class PromptTemplate {
 
     static final String TOOLS_PLACEHOLDER = "{TOOLS}";
-    public static final String DEFAULT_VERSION = "coding-agent-default-v1";
+    public static final String DEFAULT_VERSION = "coding-agent-default-v2";
     public static final String CUSTOM_VERSION = "custom";
 
     private final String version;
@@ -28,10 +28,16 @@ public final class PromptTemplate {
     }
 
     public String render(String toolDescriptions) {
+        return render(toolDescriptions, null);
+    }
+
+    public String render(String toolDescriptions, String workspace) {
         if (template == null) {
             return "";
         }
-        return template.replace(TOOLS_PLACEHOLDER, toolDescriptions == null ? "" : toolDescriptions);
+        // Insert workspace last so literal {TOOLS} in a directory name is not interpreted.
+        return template.replace(TOOLS_PLACEHOLDER, toolDescriptions == null ? "" : toolDescriptions)
+                .replace("{WORKSPACE}", workspace == null ? "Not specified" : workspace);
     }
 
     public String getVersion() {
@@ -43,6 +49,9 @@ public final class PromptTemplate {
                "## Your Role\n" +
                "You help users with programming tasks by understanding their requirements, writing code,\n" +
                "executing commands, and managing files using the available tools.\n\n" +
+               "## Workspace\n" +
+               "Current working directory: {WORKSPACE}\n" +
+               "Resolve relative file paths within this directory.\n\n" +
                "## Available Tools\n" +
                "You have access to the following tools:\n" +
                TOOLS_PLACEHOLDER + "\n\n" +

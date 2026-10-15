@@ -13,6 +13,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ToolRegistryTest {
 
     @Test
+    void explicitWorkspaceOverridesConfigDirectoryForActualToolExecution(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root)
+            throws java.io.IOException {
+        ToolRegistry registry = ToolRegistry.fromConfig(Config.defaults(), root);
+        var write = registry.getTools().get("write_file").execute("{\"path\":\"a.txt\",\"content\":\"in session\"}");
+        assertTrue(write.isSuccess(), write.getOutput());
+        assertEquals("in session", java.nio.file.Files.readString(root.resolve("a.txt")));
+        assertEquals("in session", registry.getTools().get("read_file").execute("{\"path\":\"a.txt\"}").getOutput());
+        assertTrue(registry.getTools().get("list_files").execute("{\"path\":\".\"}").getOutput().contains("a.txt"));
+    }
+
+    @Test
     @DisplayName("Registry only exposes tools enabled in config")
     void registryOnlyExposesEnabledTools() {
         Config config = new Config(

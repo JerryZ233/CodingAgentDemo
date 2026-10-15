@@ -24,6 +24,24 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ContextTest {
 
+    @Test
+    void restoredContextDefensivelyCopiesHistoryAndDelegatesPersistenceToSessionService() {
+        List<Message> history = new ArrayList<>(List.of(Message.user("first")));
+        Context restored = Context.fromMessages(history);
+        history.clear();
+        assertEquals(1, restored.getMessages().size());
+        assertNull(restored.getMemory());
+        assertNull(restored.getConversationStore());
+        assertThrows(IllegalStateException.class, () -> restored.saveToFile("unused.json"));
+        assertThrows(IllegalStateException.class, () -> restored.loadFromFile("unused.json"));
+        Path workspace = Path.of("workspace-{TOOLS}").toAbsolutePath();
+        restored.setWorkspace(workspace);
+        restored.buildMessagesForLLM();
+        restored.buildMessagesForLLM();
+        assertEquals(1, restored.getMessages().size());
+        assertTrue(restored.buildSystemPrompt().contains(workspace.toString()));
+    }
+
     private Context context;
 
     @BeforeEach

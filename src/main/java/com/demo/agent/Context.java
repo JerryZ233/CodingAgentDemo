@@ -50,15 +50,26 @@ public class Context {
      * @param conversationStore The store to use for persistence
      */
     public Context(ConversationStore conversationStore) {
-        this(conversationStore, extractMemory(conversationStore));
+        this(Objects.requireNonNull(conversationStore, "conversationStore"), extractMemory(conversationStore));
     }
 
     private Context(ConversationStore conversationStore, Memory memory) {
         this.messages = new ArrayList<>();
-        this.conversationStore = Objects.requireNonNull(conversationStore, "conversationStore");
+        this.conversationStore = conversationStore;
         this.memory = memory;
         this.promptBuilder = new PromptBuilder();
         this.contextWindowStrategy = new ContextWindowStrategy();
+    }
+
+    /** Session-owned context: persistence is performed by SessionService checkpoints. */
+    public static Context fromMessages(List<Message> history) {
+        Context context = new Context(null, null);
+        context.messages.addAll(history.stream().map(Message::copyOf).toList());
+        return context;
+    }
+
+    public void setWorkspace(java.nio.file.Path workspace) {
+        promptBuilder.setWorkspace(workspace);
     }
 
     private static Memory extractMemory(ConversationStore conversationStore) {
@@ -237,6 +248,7 @@ public class Context {
      * @param path The file path to save to
      */
     public void saveToFile(String path) {
+        requireConversationStore();
         conversationStore.save(messages, path);
     }
     
@@ -246,9 +258,16 @@ public class Context {
      * @param path The file path to load from
      */
     public void loadFromFile(String path) {
+        requireConversationStore();
         List<Message> loaded = conversationStore.load(path);
         messages.clear();
         messages.addAll(loaded);
+    }
+
+    private void requireConversationStore() {
+        if (conversationStore == null) {
+            throw new IllegalStateException("This context is persisted by SessionService");
+        }
     }
     
     /**

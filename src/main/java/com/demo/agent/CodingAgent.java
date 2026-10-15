@@ -26,7 +26,6 @@ public class CodingAgent {
     private final Map<String, Tool> tools;
     private final ToolRegistry toolRegistry;
     private final AgentLoop agentLoop;
-    private final Config config;
     private final AgentObserver observer;
     private Context conversation;
     
@@ -45,17 +44,29 @@ public class CodingAgent {
     }
 
     public CodingAgent(Config config, AgentObserver observer) {
-        this.config = config;
-        this.observer = Objects.requireNonNull(observer, "observer");
-        this.llmClient = LLMClientFactory.create(config, observer);
-        this.toolRegistry = ToolRegistry.fromConfig(config);
-        this.tools = toolRegistry.getTools();
-        
-        this.agentLoop = new AgentLoop(llmClient, tools, config.getMaxIterations(), observer);
+        this(LLMClientFactory.create(config, observer), ToolRegistry.fromConfig(config),
+                config.getMaxIterations(), observer);
         this.conversation = new Context();
-        
-        // Set tool descriptions on context
         this.conversation.setToolSpecs(buildToolSpecs());
+    }
+
+    /** Stateless execution path used by the session backend. Client ownership stays with its caller. */
+    public CodingAgent(LLMClient llmClient, ToolRegistry toolRegistry, int maxIterations) {
+        this(llmClient, toolRegistry, maxIterations, AgentObserver.noop());
+    }
+
+    private CodingAgent(LLMClient llmClient, ToolRegistry toolRegistry, int maxIterations, AgentObserver observer) {
+        this.observer = Objects.requireNonNull(observer, "observer");
+        this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
+        this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry");
+        this.tools = toolRegistry.getTools();
+        if (maxIterations <= 0) throw new IllegalArgumentException("maxIterations must be positive");
+        this.agentLoop = new AgentLoop(llmClient, tools, maxIterations, observer);
+    }
+
+    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint) {
+        context.setToolSpecs(buildToolSpecs());
+        return agentLoop.run(context, checkpoint);
     }
     
     /**
@@ -89,7 +100,7 @@ public class CodingAgent {
         observer.onAgentStarted("Starting agent execution with history...");
         
         // Add user message to conversation context
-        conversation.addUserMessage(task);
+        getConversation().addUserMessage(task);
         
         // Run agent loop with the conversation context
         AgentRunResult result = agentLoop.run(conversation);
@@ -104,6 +115,11 @@ public class CodingAgent {
      * @return The Context containing conversation history
      */
     public Context getConversation() {
+        // Transitional CLI API; session execution never uses this context.
+        if (conversation == null) {
+            conversation = new Context();
+            conversation.setToolSpecs(buildToolSpecs());
+        }
         return conversation;
     }
     

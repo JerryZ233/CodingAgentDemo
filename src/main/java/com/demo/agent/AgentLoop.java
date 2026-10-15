@@ -78,6 +78,11 @@ public class AgentLoop {
      * @param context The Context containing conversation history and configuration
      */
     public AgentRunResult run(Context context) {
+        return run(context, AgentCheckpoint.noop());
+    }
+
+    public AgentRunResult run(Context context, AgentCheckpoint checkpoint) {
+        Objects.requireNonNull(checkpoint, "checkpoint");
         String toolDescriptions = context.getToolDescriptions();
         eventLog.append(AgentEvent.runStarted());
         
@@ -93,6 +98,7 @@ public class AgentLoop {
             
             if (response == null) {
                 String errorText = "Failed to get response from LLM.";
+                checkpoint.save(context, completedIterations);
                 observer.onLlmError(errorText);
                 eventLog.append(AgentEvent.llmError(completedIterations, errorText));
                 return complete(AgentRunResult.llmError(errorText, completedIterations));
@@ -101,6 +107,7 @@ public class AgentLoop {
             if (response.isError()) {
                 String errorText = "Error: " + response.getText();
                 context.addAssistantMessage(errorText);
+                checkpoint.save(context, completedIterations);
                 observer.onLlmError(errorText);
                 eventLog.append(AgentEvent.llmError(completedIterations, errorText));
                 return complete(AgentRunResult.llmError(errorText, completedIterations));
@@ -109,17 +116,19 @@ public class AgentLoop {
             eventLog.append(AgentEvent.llmResponse(completedIterations, response.getText()));
             
             if (!response.hasToolCalls()) {
-                String finalText = response.getText();
+                String finalText = response.getText() == null ? "" : response.getText();
                 context.addAssistantMessage(finalText);
+                checkpoint.save(context, completedIterations);
                 observer.onFinalResponse(finalText);
                 eventLog.append(AgentEvent.finalResponse(completedIterations, finalText));
                 return complete(AgentRunResult.completed(finalText, completedIterations));
             }
 
             context.addAssistantToolCalls(response.getText(), response.getToolCalls());
+            checkpoint.save(context, completedIterations);
             
             for (ToolCall toolCall : response.getToolCalls()) {
-                executeToolCall(toolCall, context, completedIterations);
+                executeToolCall(toolCall, context, completedIterations, checkpoint);
             }
         }
         
@@ -143,7 +152,7 @@ public class AgentLoop {
      * 3. Add a structured tool result message to conversation
      * 4. Handle errors gracefully
      */
-    private ToolResult executeToolCall(ToolCall toolCall, Context context, int iteration) {
+    private ToolResult executeToolCall(ToolCall toolCall, Context context, int iteration, AgentCheckpoint checkpoint) {
         String toolName = toolCall.getToolName();
         Tool tool = tools.get(toolName);
         
@@ -161,8 +170,9 @@ public class AgentLoop {
             }
         }
         
-        observer.onToolResult(toolName, result);
         context.addToolResult(toolCall, result);
+        checkpoint.save(context, iteration);
+        observer.onToolResult(toolName, result);
         eventLog.append(AgentEvent.toolResult(iteration, toolName, result.getOutput()));
         return result;
     }

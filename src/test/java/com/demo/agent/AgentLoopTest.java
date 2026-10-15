@@ -20,8 +20,52 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AgentLoopTest {
+
+    @Test
+    void checkpointFailureBeforeToolsPropagatesAndExecutesNothing() {
+        AtomicInteger executed = new AtomicInteger();
+        Tool tool = new EchoTool() {
+            @Override public ToolResult execute(String args) {
+                executed.incrementAndGet();
+                return super.execute(args);
+            }
+        };
+        LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
+                List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
+        Context context = Context.fromMessages(List.of(Message.user("work")));
+        IllegalStateException failure = new IllegalStateException("checkpoint unavailable");
+        assertEquals(failure, assertThrows(IllegalStateException.class,
+                () -> new AgentLoop(model, Map.of("echo", tool)).run(context, (state, iteration) -> {
+                    assertEquals(2, state.getMessages().size());
+                    assertEquals(1, iteration);
+                    throw failure;
+                })));
+        assertEquals(0, executed.get());
+    }
+
+    @Test
+    void resultCheckpointFailureStopsRemainingToolsAndDoesNotBecomeToolError() {
+        AtomicInteger executed = new AtomicInteger();
+        Tool tool = new EchoTool() {
+            @Override public ToolResult execute(String args) {
+                executed.incrementAndGet();
+                return super.execute(args);
+            }
+        };
+        LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
+                List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
+        Context context = Context.fromMessages(List.of(Message.user("work")));
+        assertThrows(IllegalStateException.class,
+                () -> new AgentLoop(model, Map.of("echo", tool)).run(context, (state, iteration) -> {
+                    if (state.getMessages().size() == 3) throw new IllegalStateException("cannot save result");
+                }));
+        assertEquals(1, executed.get());
+        assertEquals(3, context.getMessages().size());
+        assertTrue(context.getMessages().get(2).getToolSuccess());
+    }
 
     @Test
     @DisplayName("Tool calls and results are stored as structured messages")

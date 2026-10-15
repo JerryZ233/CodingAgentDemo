@@ -47,6 +47,11 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     }
 
     @Override
+    public void close() {
+        client.close();
+    }
+
+    @Override
     public LLMResponse sendMessage(List<Message> messages, String toolsDescription) {
         try {
             var params = chatAdapter.buildRequest(messages, toolsDescription, model, maxTokens, temperature);

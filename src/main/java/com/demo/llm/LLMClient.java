@@ -12,7 +12,10 @@ import java.util.List;
  * 2. Receiving responses (text and/or tool calls)
  * 3. Managing the conversation history
  */
-public interface LLMClient {
+public interface LLMClient extends AutoCloseable {
+
+    @Override
+    default void close() { }
     
     /**
      * Sends messages to the LLM and receives a response.

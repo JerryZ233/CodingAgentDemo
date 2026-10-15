@@ -72,6 +72,14 @@ public class Message {
     public Message withContent(String newContent) {
         return new Message(role, newContent, toolCalls, toolCallId, toolName, toolSuccess, toolError);
     }
+
+    /** Rebuilds even Gson-created messages so their nested lists cannot remain mutable. */
+    public static Message copyOf(Message message) {
+        List<ToolCall> calls = message.toolCalls == null ? null : message.toolCalls.stream()
+                .map(call -> new ToolCall(call.getId(), call.getToolName(), call.getArguments())).toList();
+        return new Message(message.role, message.content, calls, message.toolCallId,
+                message.toolName, message.toolSuccess, message.toolError);
+    }
     
     /**
      * Creates a user message.
@@ -95,7 +103,7 @@ public class Message {
         return new Message("tool", content, null, toolCallId, toolName);
     }
 
-    public static Message tool(String toolCallId, String toolName, String content, boolean success, String error) {
+    public static Message tool(String toolCallId, String toolName, String content, Boolean success, String error) {
         return new Message("tool", content, null, toolCallId, toolName, success, error);
     }
     

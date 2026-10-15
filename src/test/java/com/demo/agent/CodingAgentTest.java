@@ -12,6 +12,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CodingAgentTest {
 
     @Test
+    void injectedAgentRunsOnExternalContextWithoutAddingOrResettingUserHistory() {
+        com.demo.llm.LLMClient model = (messages, tools) -> {
+            org.junit.jupiter.api.Assertions.assertEquals(2,
+                    messages.stream().filter(message -> "user".equals(message.getRole())).count());
+            return new com.demo.llm.LLMClient.LLMResponse("done", null);
+        };
+        CodingAgent agent = new CodingAgent(model, com.demo.tools.ToolRegistry.fromConfig(Config.defaults()), 3);
+        Context context = Context.fromMessages(java.util.List.of(
+                com.demo.model.Message.user("first"), com.demo.model.Message.assistant("previous answer"),
+                com.demo.model.Message.user("second")));
+        var checkpoints = new java.util.ArrayList<Integer>();
+        assertTrue(agent.runTurn(context, (state, iteration) -> checkpoints.add(iteration)).isCompleted());
+        org.junit.jupiter.api.Assertions.assertEquals(4, context.getMessages().size());
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(1), checkpoints);
+        assertTrue(context.getToolDescriptions().contains("read_file"));
+    }
+
+    @Test
     @DisplayName("Default configuration exposes file tools but not shell")
     void defaultToolsExcludeShell() {
         CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());

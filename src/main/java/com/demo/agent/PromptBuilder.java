@@ -14,6 +14,7 @@ public class PromptBuilder {
     private PromptTemplate promptTemplate;
     private String toolDescriptions;
     private List<ToolSpec> toolSpecs;
+    private String workspace;
 
     public PromptBuilder() {
         this(PromptTemplate.defaultTemplate());
@@ -26,7 +27,11 @@ public class PromptBuilder {
     }
 
     public String buildSystemPrompt() {
-        return promptTemplate.render(formatToolDescriptionsForPrompt());
+        return promptTemplate.render(formatToolDescriptionsForPrompt(), workspace);
+    }
+
+    public void setWorkspace(java.nio.file.Path workspace) {
+        this.workspace = Objects.requireNonNull(workspace, "workspace").toAbsolutePath().normalize().toString();
     }
 
     public void setSystemPromptTemplate(String systemPromptTemplate) {

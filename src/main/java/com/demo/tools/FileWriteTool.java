@@ -85,10 +85,7 @@ public class FileWriteTool implements Tool {
                     "Security: File extension not allowed. Allowed: " + SecurityUtil.getAllowedExtensions());
             }
 
-            // Warn on overwrite
-            if (Files.exists(absolutePath)) {
-                System.out.println("WARNING: Overwriting existing file: " + absolutePath);
-            }
+            boolean overwriting = Files.exists(absolutePath);
 
             // Create parent directories if needed
             java.nio.file.Path parent = absolutePath.getParent();
@@ -99,7 +96,7 @@ public class FileWriteTool implements Tool {
             // Write the file
             Files.writeString(absolutePath, content);
 
-            return ToolResult.success(getName(), "File written: " + pathStr);
+            return ToolResult.success(getName(), (overwriting ? "File overwritten: " : "File written: ") + pathStr);
 
         } catch (IllegalArgumentException ex) {
             return ToolResult.error(getName(), "Invalid arguments: " + ex.getMessage());

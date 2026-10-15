@@ -22,8 +22,12 @@ public final class ToolRegistry {
     }
 
     public static ToolRegistry fromConfig(Config config) {
+        return fromConfig(config, config.getWorkspacePath());
+    }
+
+    public static ToolRegistry fromConfig(Config config, Path workspaceRoot) {
         Objects.requireNonNull(config, "config");
-        Path workspaceRoot = config.getWorkspacePath();
+        Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Map<String, Tool> registeredTools = new LinkedHashMap<>();
 
         registerIfEnabled(registeredTools, new FileReadTool(workspaceRoot), config);
