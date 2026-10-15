@@ -22,7 +22,8 @@ This project implements a basic AI Coding Agent with:
 ```text
 CodingAgentDemo/
 |-- src/main/java/com/demo/
-|   |-- agent/           # Agent orchestration, context, observers and conversation storage
+|   |-- agent/           # Stateless turn execution, context, prompts and observers
+|   |-- cli/             # Interactive JLine terminal, commands and session presentation
 |   |-- config/          # YAML and environment configuration
 |   |-- llm/             # LLM client interface and factory
 |   |   `-- impl/        # OpenAI Java SDK client and domain/SDK adapters
@@ -50,6 +51,23 @@ gradlew.bat build
 
 ## How to Run
 
+Build the application launcher for full terminal editing support:
+
+```bash
+./gradlew installDist
+./build/install/CodingAgentDemo/bin/CodingAgentDemo
+```
+
+On Windows:
+
+```powershell
+.\\gradlew.bat installDist
+.\\build\\install\\CodingAgentDemo\\bin\\CodingAgentDemo.bat
+```
+
+Alternatively, use Gradle (stdin is forwarded; launchers connected through pipes may use plain line mode):
+
+
 ```bash
 ./gradlew run
 ```
@@ -66,12 +84,67 @@ You can also pass a custom task as a command-line argument:
 ./gradlew run --args="create a hello world file"
 ```
 
+## Interactive sessions (phase 3)
+
+With no arguments, the terminal asks for a workspace directory. Press Enter to use the configured
+`agent.workspace_dir` / `WORKSPACE_DIR` default, or enter an existing directory (spaces and outer quotes
+are supported). It does not create workspace directories. Use `/sessions` and `/resume <UUID>` at
+this prompt to restore history instead. Sessions are not selected automatically.
+
+```text
+CodingAgentDemo --workspace "G:/projects/my project"
+CodingAgentDemo --session <full-session-UUID>
+CodingAgentDemo --session-dir "G:/agent-history" --workspace "G:/projects/example"
+CodingAgentDemo --workspace "G:/projects/example" -- "Create hello.txt"
+CodingAgentDemo --session <full-session-UUID> -- "Update the greeting"
+CodingAgentDemo --help
+```
+
+`--workspace` and `--session` are mutually exclusive. Relative paths resolve from the process launch
+directory. Positional arguments form one task, which runs through the same persistent service and
+then exits; without a task the application stays interactive. `--` stops option parsing. Help does
+not initialize configuration, a client or storage. Exit codes: 0 for normal exit/completion, 1 for
+execution/storage/cleanup failure, 2 for invalid arguments, 130 for a cancelled single task.
+
+| Command | Action |
+| --- | --- |
+| `/new [directory]` | Create and switch sessions; omitted directory uses the configured default. |
+| `/sessions` | List full IDs, titles, directories, update times, states, unsaved flags and unreadable files. |
+| `/resume <full UUID>` | Restore a session; failure preserves the current selection. |
+| `/history` | Display full messages, tool call IDs, arguments and results. |
+| `/status` | Display workspace, current run ID, live/checkpoint states and unsaved state. |
+| `/cancel` | Request cancellation; wait for completion before starting another task. |
+| `/retry-save [UUID]` | Save repaired in-memory state without replaying or resuming tools. |
+| `/help` | Display help. |
+| `/exit`, `/quit` | Cancel active work, close the service and exit if closing succeeds. |
+
+Ordinary lines submit tasks. Commands are case-insensitive; their arguments retain case. Use `//`
+to submit a task starting with `/`. Old bare words such as `help`, `exit`, `save`, `load` and `clear`
+are now task text. The old conversation-file API and internal agent conversation were removed;
+old bare-message JSON files are not imported. Existing complete Session JSON remains supported.
+
+While a task runs, input remains available: help, session listing, history, status, cancellation and
+exit are allowed. New tasks, session changes and saving retries are rejected, without queueing.
+A completed or failed turn leaves the session open. Live events are read every 100ms. Answers appear
+once; tool output summaries are limited to 2,000 Unicode code points (full results remain in history).
+
+Full terminals use JLine 3.30.6 with an in-memory input history and print progress above the current
+editable input. Ctrl+C requests cancellation during a task and clears the input when idle. Ctrl+D
+exits. One Enter submits one line; unmatched quotes in coding instructions do not request continuation.
+Terminals without full editing capability (including environments declaring `TERM=dumb`) use plain
+line input/output without ANSI editing; the startup banner identifies this mode. Use
+`/cancel` in plain mode; redirected lines are not a task queue. OS interruption uses the shutdown hook.
+
+Failed saving blocks further turns until `/retry-save` succeeds. Cleanup failure remains blocking
+even if saving succeeds. `/exit` waits using the service shutdown budget; a failure returns to the
+prompt so it can be inspected/retried. EOF and JVM shutdown make one close attempt and report failure
+rather than claiming unsaved state was persisted. Forceful process termination cannot guarantee saving.
+
 ## Persistent session backend (phases 1 and 2)
 
 `SessionService` is the new UI-independent backend. It supports explicit workspace selection,
 multiple isolated sessions, asynchronous or synchronous multi-turn execution, automatic checkpoints and restart
-recovery. The existing `Main`/REPL remains on the legacy path in this phase: it does **not** yet
-use this service. Terminal commands and input handling will be connected in phase 3.
+recovery. The terminal frontend uses this service exclusively; other frontends can use the same Java API.
 
 Example Java integration (the selected workspace must already exist):
 
@@ -91,7 +164,7 @@ On a later startup, `getSession(id)` restores the history and `runTurn(id, messa
 `listSessions()` returns recent summaries plus individual unreadable-file issues.
 
 - The default store is `${user.home}/.coding-agent/sessions/`; the constructor
-  `DefaultSessionService(config, directory)` overrides it. CLI `--session-dir` is not implemented yet.
+  `DefaultSessionService(config, directory)` overrides it. CLI `--session-dir` selects the same override.
 - Each UUID identifies a version-1 JSON file with title, real absolute workspace, UTC timestamps,
   complete messages and the latest run summary. No API key, system prompt or client is serialized.
   Titles use the first request's first nonblank line, up to 40 Unicode code points.
@@ -201,18 +274,19 @@ support; this migration does not add provider-specific features.
 
 ### Packages
 
-- **agent**: Contains `Main`, `CodingAgent`, `AgentLoop`, `Context`, and `Memory`
+- **cli**: Terminal input, slash commands, session selection, event presentation and coordinated shutdown
+- **agent**: Stateless `CodingAgent`, `AgentLoop`, `Context`, prompts, observers and execution events
 - **config**: Contains YAML and environment configuration loading
 - **llm**: Contains `LLMClient` and `LLMResponse`
 - **llm.impl**: Contains `OpenAICompatibleLLMClient` and `DummyLLMClientImpl`
 - **model**: Contains `Message`, `ToolCall`, and `ToolResult`
 - **session**: Owns workspace-bound sessions, published snapshots, turn lifecycle and recovery
-- **session.storage**: Stores and validates complete sessions, separately from legacy conversation files
+- **session.storage**: Stores and validates complete session documents
 - **tools**: Contains the `Tool` interface and concrete file/shell tool implementations
 
 ### Design Patterns
 
-- **Interface-based Design**: LLM, Tool, conversation storage, and observer components use interfaces for flexibility
+- **Interface-based Design**: LLM, tools, session storage, terminal IO and observers use interfaces
 - **Inversion of Control**: Real implementations can be swapped with dummy/fake implementations for testing
 - **Command-style Tools**: Each tool exposes a stable name, description, argument schema, and execution method
 - **Factory/Registry Boundaries**: LLM selection and tool registration live outside the main `CodingAgent`
@@ -224,5 +298,5 @@ support; this migration does not add provider-specific features.
 - Context windowing uses approximate character counts rather than model tokenizer counts.
 - Session checkpoints preserve conversation and run state, but are not transactions with filesystem
   changes: an interrupted tool's actual outcome may be unknown. Tools are never replayed automatically.
-- The legacy CLI has not yet been wired to the session backend. Durable event replay and token
-  streaming are not implemented.
+- Durable event replay, token streaming, HTTP and Web frontends are not implemented.
+- Full input editing requires an attached terminal; pipe-based launchers use ordinary line mode.

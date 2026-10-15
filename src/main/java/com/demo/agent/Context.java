@@ -7,13 +7,12 @@ import com.demo.tools.ToolSpec;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Manages conversation history for the AI agent.
  * 
  * This class maintains a list of messages exchanged between the user and the AI,
- * delegates persistent storage through a ConversationStore, and builds the complete context
+ * and builds the complete context
  * to send to the LLM including system prompt, chat history, and tool descriptions.
  * 
  * The system prompt automatically includes structured tool specs set through
@@ -23,47 +22,18 @@ import java.util.Objects;
 public class Context {
 
     private final List<Message> messages;
-    private final ConversationStore conversationStore;
-    private final Memory memory;
     private final PromptBuilder promptBuilder;
     private ContextWindowStrategy contextWindowStrategy;
     
-    /**
-     * Creates a new Context with the default conversation store.
-     */
     public Context() {
-        this(new ConversationMemoryAdapter());
-    }
-    
-    /**
-     * Creates a new Context with a custom Memory instance.
-     * 
-     * @param memory The Memory instance to use for persistence
-     */
-    public Context(Memory memory) {
-        this(new ConversationMemoryAdapter(memory), memory);
-    }
-
-    /**
-     * Creates a new Context with a custom conversation store.
-     *
-     * @param conversationStore The store to use for persistence
-     */
-    public Context(ConversationStore conversationStore) {
-        this(Objects.requireNonNull(conversationStore, "conversationStore"), extractMemory(conversationStore));
-    }
-
-    private Context(ConversationStore conversationStore, Memory memory) {
         this.messages = new ArrayList<>();
-        this.conversationStore = conversationStore;
-        this.memory = memory;
         this.promptBuilder = new PromptBuilder();
         this.contextWindowStrategy = new ContextWindowStrategy();
     }
 
-    /** Session-owned context: persistence is performed by SessionService checkpoints. */
+    /** Restore caller-owned history; persistence belongs to SessionService. */
     public static Context fromMessages(List<Message> history) {
-        Context context = new Context(null, null);
+        Context context = new Context();
         context.messages.addAll(history.stream().map(Message::copyOf).toList());
         return context;
     }
@@ -72,13 +42,6 @@ public class Context {
         promptBuilder.setWorkspace(workspace);
     }
 
-    private static Memory extractMemory(ConversationStore conversationStore) {
-        if (conversationStore instanceof ConversationMemoryAdapter adapter) {
-            return adapter.getMemory();
-        }
-        return null;
-    }
-    
     /**
      * Builds the complete system prompt by injecting tool descriptions into the template.
      * 
@@ -242,49 +205,4 @@ public class Context {
         messages.clear();
     }
     
-    /**
-     * Saves the conversation history to a JSON file.
-     * 
-     * @param path The file path to save to
-     */
-    public void saveToFile(String path) {
-        requireConversationStore();
-        conversationStore.save(messages, path);
-    }
-    
-    /**
-     * Loads the conversation history from a JSON file.
-     * 
-     * @param path The file path to load from
-     */
-    public void loadFromFile(String path) {
-        requireConversationStore();
-        List<Message> loaded = conversationStore.load(path);
-        messages.clear();
-        messages.addAll(loaded);
-    }
-
-    private void requireConversationStore() {
-        if (conversationStore == null) {
-            throw new IllegalStateException("This context is persisted by SessionService");
-        }
-    }
-    
-    /**
-     * Returns the Memory instance used for persistence.
-     * 
-     * @return The Memory instance, or null when Context was created with a non-Memory store
-     */
-    public Memory getMemory() {
-        return memory;
-    }
-
-    /**
-     * Returns the store used for conversation persistence.
-     *
-     * @return The conversation store
-     */
-    public ConversationStore getConversationStore() {
-        return conversationStore;
-    }
 }

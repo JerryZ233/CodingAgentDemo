@@ -32,7 +32,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("Default configuration exposes file tools but not shell")
     void defaultToolsExcludeShell() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
+        CodingAgent agent = agent(Config.defaults());
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("read_file"));
@@ -44,7 +44,7 @@ class CodingAgentTest {
     @Test
     @DisplayName("Tool descriptions include argument schemas")
     void toolDescriptionsIncludeSchemas() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
+        CodingAgent agent = agent(Config.defaults());
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("\"required\":[\"path\"]"));
@@ -54,8 +54,11 @@ class CodingAgentTest {
     @Test
     @DisplayName("Conversation prompt includes required parameters from tool specs")
     void conversationPromptIncludesRequiredParametersFromToolSpecs() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
-        String prompt = agent.getConversation().buildSystemPrompt();
+        CodingAgent agent = agent(Config.defaults());
+        Context external = new Context();
+        external.addUserMessage("inspect tools");
+        agent.runTurn(external, AgentCheckpoint.noop());
+        String prompt = external.buildSystemPrompt();
 
         assertTrue(prompt.contains("read_file"));
         assertTrue(prompt.contains("Required parameters: path."));
@@ -76,7 +79,7 @@ class CodingAgentTest {
             Set.of("run_shell")
         );
 
-        CodingAgent agent = new CodingAgent(config, AgentObserver.noop());
+        CodingAgent agent = agent(config);
         String toolDescriptions = agent.getToolDescriptions();
 
         assertTrue(toolDescriptions.contains("run_shell"));
@@ -85,38 +88,8 @@ class CodingAgentTest {
         assertFalse(toolDescriptions.contains("list_files"));
     }
 
-    @Test
-    @DisplayName("setConversation injects current tool specs")
-    void setConversationInjectsToolSpecs() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
-        Context restored = new Context();
-
-        agent.setConversation(restored);
-
-        String prompt = restored.buildSystemPrompt();
-        assertTrue(prompt.contains("read_file"));
-        assertTrue(restored.getToolDescriptions().contains("\"read_file\""));
-    }
-
-    @Test
-    @DisplayName("execute returns structured run result")
-    void executeReturnsRunResult() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
-
-        AgentRunResult result = agent.execute("answer directly");
-
-        assertTrue(result.isCompleted());
-        assertTrue(result.getMessage().contains("answer directly"));
-    }
-
-    @Test
-    @DisplayName("executeWithHistory returns structured run result")
-    void executeWithHistoryReturnsRunResult() {
-        CodingAgent agent = new CodingAgent(Config.defaults(), AgentObserver.noop());
-
-        AgentRunResult result = agent.executeWithHistory("remember this");
-
-        assertTrue(result.isCompleted());
-        assertTrue(result.getMessage().contains("remember this"));
+    private CodingAgent agent(Config config) {
+        return new CodingAgent((messages, tools) -> new com.demo.llm.LLMClient.LLMResponse("done", null),
+                com.demo.tools.ToolRegistry.fromConfig(config), config.getMaxIterations());
     }
 }

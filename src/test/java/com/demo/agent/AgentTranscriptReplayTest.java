@@ -59,11 +59,13 @@ class AgentTranscriptReplayTest {
         assertTrue(context.getMessages().get(2).getToolSuccess());
         assertEquals("assistant", context.getMessages().get(3).getRole());
 
-        Path transcript = tempDir.resolve("transcript.json");
-        context.saveToFile(transcript.toString());
-
-        Context reloaded = new Context();
-        reloaded.loadFromFile(transcript.toString());
+        var repository = new com.demo.session.storage.JsonSessionRepository(tempDir.resolve("sessions"));
+        String id = java.util.UUID.randomUUID().toString();
+        java.time.Instant now = java.time.Instant.now();
+        repository.save(new com.demo.session.SessionSnapshot(id, "fixture", tempDir.toAbsolutePath(),
+                now, now, context.getMessages(),
+                com.demo.session.SessionRun.started(now).finish(result, now), false));
+        Context reloaded = Context.fromMessages(repository.load(id).messages());
 
         List<Message> replayed = reloaded.getMessages();
         assertEquals(4, replayed.size());

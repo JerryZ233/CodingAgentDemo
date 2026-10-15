@@ -9,7 +9,8 @@ java {
 }
 
 application {
-    mainClass.set("com.demo.agent.Main")
+    mainClass.set("com.demo.cli.Main")
+    applicationDefaultJvmArgs = listOf("-Dfile.encoding=UTF-8")
 }
 
 repositories {
@@ -17,6 +18,9 @@ repositories {
 }
 
 dependencies {
+    implementation("org.jline:jline-reader:3.30.6")
+    implementation("org.jline:jline-terminal:3.30.6")
+    runtimeOnly("org.jline:jline-terminal-jni:3.30.6")
     // Model API client (owns HTTP transport and protocol serialization)
     implementation("com.openai:openai-java:4.81.0")
     
@@ -32,6 +36,10 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+tasks.named<JavaExec>("run") {
+    standardInput = System.`in`
 }
 
 tasks.withType<JavaCompile>().configureEach {
