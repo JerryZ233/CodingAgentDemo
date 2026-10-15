@@ -9,7 +9,8 @@ public class AgentRunResult {
         COMPLETED,
         LLM_ERROR,
         MAX_ITERATIONS,
-        TOOL_ERROR
+        TOOL_ERROR,
+        CANCELLED
     }
 
     private final Status status;
@@ -52,5 +53,9 @@ public class AgentRunResult {
 
     public static AgentRunResult toolError(String message, int iterations) {
         return new AgentRunResult(Status.TOOL_ERROR, message, iterations);
+    }
+
+    public static AgentRunResult cancelled(int iterations) {
+        return new AgentRunResult(Status.CANCELLED, "Turn cancelled. Completed file changes are retained.", iterations);
     }
 }

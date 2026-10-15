@@ -1,5 +1,6 @@
 package com.demo.llm;
 
+import com.demo.execution.CancellationToken;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import java.util.List;
@@ -25,6 +26,13 @@ public interface LLMClient extends AutoCloseable {
      * @return Response containing text and/or tool calls
      */
     LLMResponse sendMessage(List<Message> messages, String toolsDescription);
+
+    default LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token) {
+        token.throwIfCancellationRequested();
+        LLMResponse response = sendMessage(messages, toolsDescription);
+        token.throwIfCancellationRequested();
+        return response;
+    }
     
     /**
      * Response from the LLM containing text and/or tool calls.

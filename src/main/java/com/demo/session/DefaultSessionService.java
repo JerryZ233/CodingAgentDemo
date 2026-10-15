@@ -4,6 +4,7 @@ import com.demo.agent.AgentObserver;
 import com.demo.agent.AgentRunResult;
 import com.demo.agent.CodingAgent;
 import com.demo.config.Config;
+import com.demo.execution.ResourceCleanupException;
 import com.demo.llm.LLMClient;
 import com.demo.llm.LLMClientFactory;
 import com.demo.session.storage.JsonSessionRepository;
@@ -12,62 +13,77 @@ import com.demo.session.storage.SessionStorageException;
 import com.demo.tools.ToolRegistry;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
-/** Synchronous backend with a non-queuing single-writer gate and lock-free published reads. */
+/** One admitted background turn. Only that worker mutates its session; readers see checkpoints. */
 public final class DefaultSessionService implements SessionService {
     public enum ClientOwnership { OWNED, BORROWED }
-
+    private enum Lifecycle { OPEN, CLOSING, CLOSED }
     private final Config config;
     private final LLMClient client;
     private final ClientOwnership ownership;
     private final SessionRepository repository;
     private final Clock clock;
+    private final ExecutorService executor;
+    private final Duration closeTimeout;
     private final WorkspaceResolver workspaces = new WorkspaceResolver();
     private final SessionRecovery recovery = new SessionRecovery();
-    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
+    private final Map<String, Session> sessions = new java.util.concurrent.ConcurrentHashMap<>();
     private final ReentrantLock mutations = new ReentrantLock();
-    private volatile boolean closed;
+    private final ReentrantLock closeGate = new ReentrantLock();
+    private volatile Lifecycle lifecycle = Lifecycle.OPEN;
+    private volatile ActiveRun active;
+    private volatile Thread worker;
+    private volatile ResourceCleanupException cleanupFailure;
 
-    public DefaultSessionService(Config config) {
-        this(config, JsonSessionRepository.defaultDirectory());
-    }
-
-    public DefaultSessionService(Config config, Path directory) {
-        this(config, new JsonSessionRepository(directory));
-    }
-
+    public DefaultSessionService(Config config) { this(config, JsonSessionRepository.defaultDirectory()); }
+    public DefaultSessionService(Config config, Path directory) { this(config, new JsonSessionRepository(directory)); }
     private DefaultSessionService(Config config, SessionRepository repository) {
         this(config, createOwnedClient(config), repository, Clock.systemUTC(), ClientOwnership.OWNED);
     }
-
     private static LLMClient createOwnedClient(Config config) {
         Objects.requireNonNull(config, "config");
         if (config.getMaxIterations() <= 0) throw new IllegalArgumentException("maxIterations must be positive");
         return LLMClientFactory.create(config, AgentObserver.noop());
     }
-
-    /** Injected clients are borrowed unless ownership is explicitly transferred. */
+    /** The injected client is borrowed; the service always owns its execution thread. */
     public DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock) {
         this(config, client, repository, clock, ClientOwnership.BORROWED);
     }
-
     public DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
                                  ClientOwnership ownership) {
-        this.config = Objects.requireNonNull(config, "config");
-        this.client = Objects.requireNonNull(client, "client");
-        this.repository = Objects.requireNonNull(repository, "repository");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.ownership = Objects.requireNonNull(ownership, "ownership");
-        if (config.getMaxIterations() <= 0) throw new IllegalArgumentException("maxIterations must be positive");
+        this(config, client, repository, clock, ownership, Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "coding-agent-runner");
+            thread.setDaemon(false);
+            return thread;
+        }), Duration.ofSeconds(5));
+    }
+    DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
+                          ClientOwnership ownership, ExecutorService executor, Duration closeTimeout) {
+        this.config = Objects.requireNonNull(config);
+        this.client = Objects.requireNonNull(client);
+        this.repository = Objects.requireNonNull(repository);
+        this.clock = Objects.requireNonNull(clock);
+        this.ownership = Objects.requireNonNull(ownership);
+        this.executor = Objects.requireNonNull(executor);
+        this.closeTimeout = Objects.requireNonNull(closeTimeout);
+        if (config.getMaxIterations() <= 0 || closeTimeout.isNegative() || closeTimeout.isZero()) {
+            throw new IllegalArgumentException("Iteration limit and close timeout must be positive");
+        }
     }
 
     @Override
@@ -78,17 +94,15 @@ public final class DefaultSessionService implements SessionService {
             Instant now = clock.instant();
             Session session = new Session(new SessionSnapshot(UUID.randomUUID().toString(), "新会话", real,
                     now, now, List.of(), null, true));
-            persist(session); // Failed creation is not published as an existing session.
+            persist(session);
             sessions.put(session.id, session);
             return session.published;
-        } finally {
-            mutations.unlock();
-        }
+        } finally { mutations.unlock(); }
     }
 
     @Override
     public SessionCatalog listSessions() {
-        ensureOpen();
+        ensureReadable();
         SessionCatalog disk = repository.list();
         Map<String, SessionSummary> summaries = new HashMap<>();
         disk.sessions().forEach(summary -> summaries.put(summary.id(), summary));
@@ -98,70 +112,116 @@ public final class DefaultSessionService implements SessionService {
 
     @Override
     public SessionSnapshot getSession(String id) {
-        ensureOpen();
+        ensureReadable();
         validateId(id);
         Session loaded = sessions.get(id);
         if (loaded != null) return loaded.published;
         enterMutation();
-        try {
-            return loadSession(id).published;
-        } finally {
-            mutations.unlock();
-        }
+        try { return loadSession(id).published; }
+        finally { mutations.unlock(); }
     }
 
     @Override
-    public SessionSnapshot runTurn(String id, String message) {
+    public Optional<RunHandle> getActiveRun() {
+        ensureReadable();
+        return Optional.ofNullable(active);
+    }
+
+    @Override
+    public RunHandle submitTurn(String id, String message) {
         enterMutation();
         try {
             if (message == null || message.isBlank()) {
                 throw new SessionException(SessionException.Reason.INVALID_INPUT, "Message must not be blank");
             }
+            if (cleanupFailure != null) throw new SessionException(SessionException.Reason.RESOURCE_FAILURE,
+                    "A prior resource has not been cleaned up; close the service to retry cleanup");
             Session session = loadSession(id);
-            // A failed save in any session blocks further model/tool side effects until it is resolved.
             if (sessions.values().stream().anyMatch(item -> item.unsaved)) {
                 throw new SessionException(SessionException.Reason.UNSAVED_SESSION,
                         "Retry saving unsaved sessions before starting another turn");
             }
             workspaces.validateStored(session.workspace);
-            if (session.agent == null) {
-                session.agent = new CodingAgent(client, ToolRegistry.fromConfig(config, session.workspace),
-                        config.getMaxIterations());
-            }
-            if (session.context.getMessages().isEmpty()) session.title = titleFor(message);
-            session.lastRun = SessionRun.started(now(session));
-            session.context.addUserMessage(message);
-            touch(session);
+            if (session.agent == null) session.agent = new CodingAgent(client,
+                    ToolRegistry.fromConfig(config, session.workspace), config.getMaxIterations());
+            ActiveRun run = new ActiveRun(session.id, clock);
+            active = run;
             try {
-                persist(session);
-                AgentRunResult result = session.agent.runTurn(session.context, (context, iteration) -> {
-                    session.lastRun = session.lastRun.atIteration(iteration);
-                    touch(session);
-                    persist(session);
-                });
-                session.lastRun = session.lastRun.finish(result, now(session));
-                touch(session);
-                persist(session);
-                return session.published;
-            } catch (SessionStorageException e) {
-                markStorageFailure(session);
-                throw e;
-            } catch (RuntimeException e) {
-                // Unknown exceptions must not leak raw model/provider data into durable history.
-                session.apply(recovery.recover(session.publish(), now(session)).snapshot());
-                session.lastRun = session.lastRun.finish(SessionRun.Status.FAILED, now(session),
-                        "Turn failed unexpectedly; no operations were replayed.");
-                touch(session);
-                try {
-                    persist(session);
-                } catch (SessionStorageException storageFailure) {
-                    markStorageFailure(session);
-                    throw storageFailure;
-                }
-                return session.published;
+                executor.execute(() -> executeTurn(session, message, run));
+            } catch (RejectedExecutionException e) {
+                active = null;
+                throw new SessionException(SessionException.Reason.RESOURCE_FAILURE, "Task could not be scheduled", e);
             }
+            return run;
+        } finally { mutations.unlock(); }
+    }
+
+    @Override
+    public SessionSnapshot runTurn(String id, String message) {
+        try { return submitTurn(id, message).completion().toCompletableFuture().join(); }
+        catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException cause) throw cause;
+            if (e.getCause() instanceof Error cause) throw cause;
+            throw e;
+        }
+    }
+
+    private void executeTurn(Session session, String message, ActiveRun run) {
+        worker = Thread.currentThread();
+        Throwable failure = null;
+        if (session.context.getMessages().isEmpty()) session.title = titleFor(message);
+        session.lastRun = SessionRun.started(run.runId(), now(session));
+        session.context.addUserMessage(message);
+        touch(session);
+        try {
+            persist(session);
+            run.running();
+            AgentRunResult result = session.agent.runTurn(session.context, (context, iteration) -> {
+                session.lastRun = session.lastRun.atIteration(iteration);
+                if (run.cancellation.token().isCancellationRequested()) session.lastRun = session.lastRun.cancelling();
+                touch(session);
+                persist(session);
+            }, run.cancellation.token(), run::progress);
+            if (run.beginFinishing()) result = AgentRunResult.cancelled(result.getIterations());
+            if (!run.cancellation.callbackFailures().isEmpty()) {
+                throw new ResourceCleanupException("A cancellation resource callback failed", run.cancellation::retryFailedCallbacks);
+            }
+            session.lastRun = session.lastRun.finish(result, now(session));
+            touch(session);
+            persist(session);
+        } catch (SessionStorageException e) {
+            run.beginFinishing();
+            markStorageFailure(session);
+            failure = e;
+        } catch (Throwable e) {
+            run.beginFinishing();
+            if (e instanceof ResourceCleanupException resource) cleanupFailure = resource;
+            session.apply(recovery.recover(session.publish(), now(session)).snapshot());
+            session.lastRun = session.lastRun.finish(SessionRun.Status.FAILED, now(session),
+                    e instanceof ResourceCleanupException ? "Resource cleanup could not be confirmed."
+                            : "Turn failed unexpectedly; no operations were replayed.");
+            touch(session);
+            try { persist(session); }
+            catch (SessionStorageException storage) { markStorageFailure(session); failure = storage; }
+            if (failure == null && e instanceof ResourceCleanupException) {
+                failure = new SessionException(SessionException.Reason.RESOURCE_FAILURE, session.lastRun.message(), e);
+            } else if (failure == null && e instanceof Error) failure = e;
         } finally {
-            mutations.unlock();
+            // Storage errors must not hide a failed cancellation cleanup callback.
+            if (!run.cancellation.callbackFailures().isEmpty()) {
+                ResourceCleanupException prior = cleanupFailure;
+                cleanupFailure = new ResourceCleanupException("Cancellation cleanup remains incomplete", () -> {
+                    if (prior != null) prior.retryCleanup();
+                    run.cancellation.retryFailedCallbacks();
+                });
+            }
+            // All state writes and resource cleanup precede terminal publication and releasing admission.
+            run.finish(session.published, failure);
+            mutations.lock();
+            try { active = null; worker = null; }
+            finally { mutations.unlock(); }
+            run.drained.countDown();
+            run.publishCompletion(session.published, failure);
         }
     }
 
@@ -172,37 +232,61 @@ public final class DefaultSessionService implements SessionService {
             Session session = loadSession(id);
             savePending(session);
             return session.published;
-        } finally {
-            mutations.unlock();
-        }
+        } finally { mutations.unlock(); }
     }
 
     @Override
     public void close() {
-        if (closed) return;
-        enterMutation();
+        if (lifecycle == Lifecycle.CLOSED) return;
+        if (Thread.currentThread() == worker || !closeGate.tryLock()) {
+            throw new SessionException(SessionException.Reason.BUSY, "Cannot close from the running task or concurrent close");
+        }
+        long deadline = System.nanoTime() + closeTimeout.toNanos();
         try {
-            SessionStorageException failure = null;
-            for (Session session : sessions.values()) {
-                try {
-                    savePending(session);
-                } catch (SessionStorageException e) {
-                    if (failure == null) failure = e; else failure.addSuppressed(e);
+            if (!mutations.tryLock()) throw new SessionException(SessionException.Reason.BUSY, "Session service is busy");
+            ActiveRun run;
+            try {
+                if (lifecycle == Lifecycle.CLOSED) return;
+                lifecycle = Lifecycle.CLOSING;
+                run = active;
+            } finally { mutations.unlock(); }
+            if (run != null) {
+                run.cancel();
+                if (!run.drained.await(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) throw shutdownTimeout();
+            }
+            if (cleanupFailure != null) {
+                try { cleanupFailure.retryCleanup(); cleanupFailure = null; }
+                catch (RuntimeException e) {
+                    throw new SessionException(SessionException.Reason.RESOURCE_FAILURE, "Resource cleanup is still incomplete", e);
                 }
             }
-            // Keep the service and client alive so the caller can repair storage and retry close.
-            if (failure != null) throw failure;
-            closed = true;
+            SessionStorageException failure = null;
+            for (Session session : sessions.values()) {
+                try { savePending(session); }
+                catch (SessionStorageException e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
+            }
+            if (failure != null) {
+                lifecycle = Lifecycle.OPEN;
+                throw failure;
+            }
+            executor.shutdown();
+            if (!executor.awaitTermination(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) throw shutdownTimeout();
             if (ownership == ClientOwnership.OWNED) {
                 try { client.close(); }
                 catch (RuntimeException e) {
-                    throw new SessionException(SessionException.Reason.RESOURCE_FAILURE,
-                            "Failed to release the model client", e);
+                    throw new SessionException(SessionException.Reason.RESOURCE_FAILURE, "Failed to release the model client", e);
                 }
             }
-        } finally {
-            mutations.unlock();
-        }
+            lifecycle = Lifecycle.CLOSED;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw shutdownTimeout();
+        } finally { closeGate.unlock(); }
+    }
+
+    private SessionException shutdownTimeout() {
+        return new SessionException(SessionException.Reason.SHUTDOWN_TIMEOUT,
+                "Service is still closing; active resources have not been released. Retry close after completion.");
     }
 
     private Session loadSession(String id) {
@@ -210,9 +294,8 @@ public final class DefaultSessionService implements SessionService {
         Session existing = sessions.get(id);
         if (existing != null) return existing;
         SessionSnapshot stored;
-        try {
-            stored = repository.load(id);
-        } catch (SessionStorageException e) {
+        try { stored = repository.load(id); }
+        catch (SessionStorageException e) {
             if (e.getReason() == SessionStorageException.Reason.NOT_FOUND) {
                 throw new SessionException(SessionException.Reason.NOT_FOUND, "Session not found: " + id, e);
             }
@@ -224,32 +307,26 @@ public final class DefaultSessionService implements SessionService {
         if (restored.changed()) persist(session);
         return session;
     }
-
     private void savePending(Session session) {
         if (!session.unsaved) return;
         session.apply(recovery.recover(session.published, now(session)).snapshot());
         persist(session);
     }
-
     private void persist(Session session) {
         session.unsaved = true;
         repository.save(session.publish());
         session.unsaved = false;
         session.publish();
     }
-
     private Instant now(Session session) {
         Instant now = clock.instant();
         if (now.isBefore(session.updatedAt)) now = session.updatedAt;
         if (session.lastRun != null) {
             if (now.isBefore(session.lastRun.startedAt())) now = session.lastRun.startedAt();
-            if (session.lastRun.endedAt() != null && now.isBefore(session.lastRun.endedAt())) {
-                now = session.lastRun.endedAt();
-            }
+            if (session.lastRun.endedAt() != null && now.isBefore(session.lastRun.endedAt())) now = session.lastRun.endedAt();
         }
         return now;
     }
-
     private void markStorageFailure(Session session) {
         session.lastRun = session.lastRun.finish(SessionRun.Status.STORAGE_ERROR, now(session),
                 "Checkpoint failed; retry saving before continuing. Completed file changes are retained.");
@@ -257,29 +334,28 @@ public final class DefaultSessionService implements SessionService {
         touch(session);
         session.publish();
     }
-
     private void touch(Session session) { session.updatedAt = now(session); }
-
     private String titleFor(String message) {
         String line = message.stripLeading().lines().findFirst().orElse("新会话").stripTrailing();
         return line.substring(0, line.offsetByCodePoints(0, Math.min(40, line.codePointCount(0, line.length()))));
     }
-
-    private void ensureOpen() {
-        if (closed) throw new SessionException(SessionException.Reason.CLOSED, "Session service is closed");
+    private void ensureReadable() {
+        if (lifecycle == Lifecycle.CLOSED) throw new SessionException(SessionException.Reason.CLOSED, "Session service is closed");
     }
-
+    private void ensureOpen() {
+        ensureReadable();
+        if (lifecycle == Lifecycle.CLOSING) throw new SessionException(SessionException.Reason.CLOSING, "Session service is closing");
+    }
     private void enterMutation() {
         ensureOpen();
         if (mutations.isHeldByCurrentThread() || !mutations.tryLock()) {
             throw new SessionException(SessionException.Reason.BUSY, "Session service is busy");
         }
-        if (closed) {
-            mutations.unlock();
+        try {
             ensureOpen();
-        }
+            if (active != null) throw new SessionException(SessionException.Reason.BUSY, "A turn is already active");
+        } catch (RuntimeException e) { mutations.unlock(); throw e; }
     }
-
     private void validateId(String id) {
         try { SessionSnapshot.requireId(id); }
         catch (IllegalArgumentException e) {

@@ -5,7 +5,7 @@ import com.demo.agent.Context;
 import java.nio.file.Path;
 import java.time.Instant;
 
-/** Mutable state is confined to the service's mutation gate; readers see published snapshots only. */
+/** Mutable state has one admitted writer; concurrent readers see published snapshots only. */
 final class Session {
     final String id;
     final Path workspace;

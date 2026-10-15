@@ -1,8 +1,9 @@
 package com.demo.session;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
-/** UI-independent, synchronous session backend. No implicit task queue. */
+/** UI-independent session backend. At most one admitted turn, no implicit task queue. */
 public interface SessionService extends AutoCloseable {
     /** Creation succeeds only after the empty session is saved. */
     SessionSnapshot createSession(Path workspace);
@@ -12,8 +13,10 @@ public interface SessionService extends AutoCloseable {
     SessionSnapshot getSession(String id);
     /** Errors in model execution are outcomes; storage failures throw and block further turns. */
     SessionSnapshot runTurn(String id, String message);
+    RunHandle submitTurn(String id, String message);
+    Optional<RunHandle> getActiveRun();
     /** Repairs interrupted protocol blocks and saves without resuming the failed turn. */
     SessionSnapshot retrySave(String id);
-    /** Busy close is rejected. A failed save leaves the service open for retry. */
+    /** Cancels active work and waits up to five seconds. Failed saving remains retryable. */
     @Override void close();
 }

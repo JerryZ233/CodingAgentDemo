@@ -10,6 +10,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SessionRecoveryTest {
+
+    @Test
+    void cancellingIsInterruptedOnRestartButCompletedCancellationIsNotChanged() {
+        var cancelling = snapshot(List.of(Message.user("work")), SessionRun.started(now).cancelling());
+        assertEquals(SessionRun.Status.INTERRUPTED, recovery.recover(cancelling, now).snapshot().lastRun().status());
+        var cancelled = snapshot(List.of(Message.user("work")),
+                SessionRun.started(now).finish(SessionRun.Status.CANCELLED, now, "cancelled"));
+        assertFalse(recovery.recover(cancelled, now).changed());
+        assertEquals(SessionRun.Status.CANCELLED, recovery.recover(cancelled, now).snapshot().lastRun().status());
+    }
     private final Instant now = Instant.parse("2026-10-15T10:00:00Z");
     private final SessionRecovery recovery = new SessionRecovery();
 

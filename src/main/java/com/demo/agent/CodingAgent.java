@@ -1,6 +1,7 @@
 package com.demo.agent;
 
 import com.demo.config.Config;
+import com.demo.execution.CancellationToken;
 import com.demo.llm.LLMClient;
 import com.demo.tools.Tool;
 import com.demo.llm.LLMClientFactory;
@@ -67,6 +68,11 @@ public class CodingAgent {
     public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint) {
         context.setToolSpecs(buildToolSpecs());
         return agentLoop.run(context, checkpoint);
+    }
+
+    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog events) {
+        context.setToolSpecs(buildToolSpecs());
+        return agentLoop.run(context, checkpoint, token, events);
     }
     
     /**

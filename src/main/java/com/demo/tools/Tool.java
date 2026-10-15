@@ -1,5 +1,6 @@
 package com.demo.tools;
 
+import com.demo.execution.CancellationToken;
 import com.demo.model.ToolResult;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -47,4 +48,10 @@ public interface Tool {
      * @return ToolResult containing success status and output
      */
     ToolResult execute(String args);
+
+    /** Once admitted, short file operations finish and retain their actual result. */
+    default ToolResult execute(String args, CancellationToken token) {
+        token.throwIfCancellationRequested();
+        return execute(args);
+    }
 }

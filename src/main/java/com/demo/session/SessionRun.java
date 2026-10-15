@@ -9,14 +9,14 @@ import java.util.UUID;
 public record SessionRun(String id, Instant startedAt, Instant endedAt, Status status,
                          int iterations, String message) {
     public enum Status {
-        RUNNING, COMPLETED, LLM_ERROR, MAX_ITERATIONS, TOOL_ERROR, FAILED, INTERRUPTED, STORAGE_ERROR
+        RUNNING, CANCELLING, CANCELLED, COMPLETED, LLM_ERROR, MAX_ITERATIONS, TOOL_ERROR, FAILED, INTERRUPTED, STORAGE_ERROR
     }
 
     public SessionRun {
         SessionSnapshot.requireId(id);
         Objects.requireNonNull(startedAt, "startedAt");
         Objects.requireNonNull(status, "status");
-        if (iterations < 0 || (status == Status.RUNNING) != (endedAt == null)
+        if (iterations < 0 || (status == Status.RUNNING || status == Status.CANCELLING) != (endedAt == null)
                 || (endedAt != null && endedAt.isBefore(startedAt))) {
             throw new IllegalArgumentException("Invalid run timing, status or iteration count");
         }
@@ -24,6 +24,14 @@ public record SessionRun(String id, Instant startedAt, Instant endedAt, Status s
 
     public static SessionRun started(Instant now) {
         return new SessionRun(UUID.randomUUID().toString(), now, null, Status.RUNNING, 0, null);
+    }
+
+    public static SessionRun started(String id, Instant now) {
+        return new SessionRun(id, now, null, Status.RUNNING, 0, null);
+    }
+
+    public SessionRun cancelling() {
+        return new SessionRun(id, startedAt, null, Status.CANCELLING, iterations, message);
     }
 
     public SessionRun atIteration(int iteration) {

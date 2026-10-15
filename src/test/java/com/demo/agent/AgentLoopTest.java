@@ -25,6 +25,29 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class AgentLoopTest {
 
     @Test
+    void admittedShortFileOperationKeepsTrueResultWhenCancellationArrivesDuringExecution(@org.junit.jupiter.api.io.TempDir java.nio.file.Path workspace)
+            throws java.io.IOException {
+        var source = new com.demo.execution.CancellationSource();
+        Tool writer = new EchoTool() {
+            @Override public ToolResult execute(String args) {
+                source.cancel(); // The short operation has already started; it is allowed to finish.
+                try { java.nio.file.Files.writeString(workspace.resolve("a.txt"), "completed"); }
+                catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+                return ToolResult.success("echo", "written");
+            }
+        };
+        LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
+                List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
+        Context context = Context.fromMessages(List.of(Message.user("write")));
+        var result = new AgentLoop(model, Map.of("echo", writer)).run(context, AgentCheckpoint.noop(), source.token(), AgentEventLog.noop());
+        assertEquals(AgentRunResult.Status.CANCELLED, result.getStatus());
+        assertEquals("completed", java.nio.file.Files.readString(workspace.resolve("a.txt")));
+        assertTrue(context.getMessages().get(2).getToolSuccess());
+        assertFalse(context.getMessages().get(3).getToolSuccess());
+        assertTrue(context.getMessages().get(3).getContent().contains("before execution"));
+    }
+
+    @Test
     void checkpointFailureBeforeToolsPropagatesAndExecutesNothing() {
         AtomicInteger executed = new AtomicInteger();
         Tool tool = new EchoTool() {
@@ -226,15 +249,18 @@ class AgentLoopTest {
         assertEquals(List.of(
                 AgentEvent.Type.RUN_STARTED,
                 AgentEvent.Type.ITERATION_STARTED,
+                AgentEvent.Type.LLM_REQUEST_STARTED,
                 AgentEvent.Type.LLM_RESPONSE,
+                AgentEvent.Type.TOOL_STARTED,
                 AgentEvent.Type.TOOL_RESULT,
                 AgentEvent.Type.ITERATION_STARTED,
+                AgentEvent.Type.LLM_REQUEST_STARTED,
                 AgentEvent.Type.LLM_RESPONSE,
                 AgentEvent.Type.FINAL_RESPONSE,
                 AgentEvent.Type.RUN_COMPLETED
         ), eventLog.getEvents().stream().map(AgentEvent::getType).toList());
-        assertEquals("echo", eventLog.getEvents().get(3).getToolName());
-        assertEquals(AgentRunResult.Status.COMPLETED, eventLog.getEvents().get(7).getStatus());
+        assertEquals("echo", eventLog.getEvents().get(5).getToolName());
+        assertEquals(AgentRunResult.Status.COMPLETED, eventLog.getEvents().get(10).getStatus());
     }
 
     @Test

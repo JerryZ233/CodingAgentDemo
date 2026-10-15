@@ -31,6 +31,7 @@ public final class SessionRecovery {
         repaired += appendUnknownResults(history, pending);
         SessionRun run = source.lastRun();
         boolean interrupted = run != null && (run.status() == SessionRun.Status.RUNNING
+                || run.status() == SessionRun.Status.CANCELLING
                 || run.status() == SessionRun.Status.STORAGE_ERROR);
         if (!interrupted && repaired == 0) return new RecoveryResult(source, false, null);
         Instant updated = now.isBefore(source.updatedAt()) ? source.updatedAt() : now;

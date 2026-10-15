@@ -66,12 +66,12 @@ You can also pass a custom task as a command-line argument:
 ./gradlew run --args="create a hello world file"
 ```
 
-## Persistent session backend (phase 1)
+## Persistent session backend (phases 1 and 2)
 
 `SessionService` is the new UI-independent backend. It supports explicit workspace selection,
-multiple isolated sessions, synchronous multi-turn execution, automatic checkpoints and restart
+multiple isolated sessions, asynchronous or synchronous multi-turn execution, automatic checkpoints and restart
 recovery. The existing `Main`/REPL remains on the legacy path in this phase: it does **not** yet
-use this service. New terminal commands, asynchronous execution and cancellation are later phases.
+use this service. Terminal commands and input handling will be connected in phase 3.
 
 Example Java integration (the selected workspace must already exist):
 
@@ -106,12 +106,54 @@ On a later startup, `getSession(id)` restores the history and `runTurn(id, messa
   are retained. A crash is handled the same way on restore, even if final text was already saved.
 - One turn runs at a time; concurrent mutation requests receive `SessionException` with `BUSY`
   instead of being queued. Published snapshots remain readable. Model errors and iteration limits
-  finish the turn, not the session. There is no cancellation or token streaming in this phase.
+  finish the turn, not the session. There is no token streaming in this phase.
 - Production constructors own and close the model client. The constructor accepting a client,
   repository and clock borrows the client by default; `ClientOwnership.OWNED` explicitly transfers
   ownership. A failed close checkpoint leaves the service open so saving/closing can be retried.
 - The service never reads terminal input or prints model/tool results. Inject a scripted `LLMClient`,
   a `SessionRepository`, and a `Clock` for deterministic tests without paid API calls.
+
+### Asynchronous progress and cancellation
+
+```java
+RunHandle run = sessions.submitTurn(session.id(), "Read the project and update the greeting");
+long cursor = 0;
+for (SessionEvent event : run.eventsAfter(cursor)) {
+    // A frontend repeats this incremental read while handling user input independently.
+    cursor = event.sequence();
+    System.out.println(event.type());
+}
+// When the user requests stopping: run.cancel();
+SessionSnapshot finished = run.completion().toCompletableFuture().join();
+```
+
+- Submission validates and reserves the single run slot without waiting for a model response. The
+  worker saves the user message before requesting the model. `runTurn()` is a blocking wrapper
+  around this same path. Scheduling rejection appends no history and releases the reservation.
+- A handle exposes `STARTING`, `RUNNING`, `CANCELLING`, `FINISHING`, `FINISHED`. Cancellation returns
+  `REQUESTED`, `ALREADY_REQUESTED`, `TOO_LATE` or `ALREADY_FINISHED`; acceptance does not mean cleanup
+  has already finished. Old handles never cancel newer runs.
+- `completion()` is read-only: cancelling a caller's Future copy does not cancel the run. Use
+  `cancel()` and wait for completion. Normal cancellation returns a snapshot with `CANCELLED`;
+  storage or cleanup failures complete exceptionally. Saving errors take precedence over cancellation.
+- Each handle retains ordered events starting at sequence 1. `eventsAfter(0)` reads from the start;
+  then pass the latest sequence. Events include model-request and tool start/result progress,
+  assistant messages, cancellation and exactly one terminal event. Final text appears once;
+  completed events remain readable, but events are not persisted or replayed after restart.
+- Cancellation is propagated to the SDK's raw HTTP Future and response body, rather than only
+  cancelling a mapped Future. Late results cannot append messages or start tools. This stops local
+  request processing; it does not claim to cancel generation already underway at the remote provider.
+- Already started short file operations finish with their true results. Remaining calls receive
+  explicit cancelled results; completed file changes are not rolled back. Shell cancellation stops
+  the observed process tree and releases its streams/reader with a two-second cleanup budget. A
+  cleanup failure blocks further turns rather than pretending those resources have been released.
+- `close()` requests cancellation and waits up to five seconds without holding the admission lock.
+  A timeout leaves the service in `CLOSING`, readable but rejecting new work; retry close after the
+  operation finishes. Persisted `CANCELLING` runs become `INTERRUPTED` on restart. Fully saved
+  `CANCELLED` runs remain cancelled and can be continued with a new user request.
+- Injected synchronous clients still work through a default cancellation-aware overload; long custom
+  operations must implement that overload to stop promptly. A late result is rejected even if the
+  custom client does not cooperate with cancellation.
 
 Pre-release development does not require backwards compatibility. Before removing or changing
 existing functionality, describe the concrete change and obtain user confirmation. This applies
@@ -123,8 +165,8 @@ until the user declares the official release.
 
 ## Model client configuration
 
-Model communication uses the official OpenAI Java SDK 4.81.0 and the synchronous
-Chat Completions API. The SDK handles HTTP transport and JSON serialization;
+Model communication uses the official OpenAI Java SDK 4.81.0 and the
+non-streaming Chat Completions API through the SDK's asynchronous request path. The SDK handles HTTP transport and JSON serialization;
 the application maps domain messages and tool schemas to SDK types and maps SDK
 responses back to `LLMResponse`. `AgentLoop` continues to execute tools itself.
 
@@ -182,5 +224,5 @@ support; this migration does not add provider-specific features.
 - Context windowing uses approximate character counts rather than model tokenizer counts.
 - Session checkpoints preserve conversation and run state, but are not transactions with filesystem
   changes: an interrupted tool's actual outcome may be unknown. Tools are never replayed automatically.
-- The legacy CLI has not yet been wired to the session backend. Cancellation and durable event replay
-  are not implemented.
+- The legacy CLI has not yet been wired to the session backend. Durable event replay and token
+  streaming are not implemented.

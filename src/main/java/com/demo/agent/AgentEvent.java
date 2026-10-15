@@ -1,5 +1,7 @@
 package com.demo.agent;
 
+import com.demo.model.ToolCall;
+import com.demo.model.ToolResult;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -11,9 +13,11 @@ public class AgentEvent {
     public enum Type {
         RUN_STARTED,
         ITERATION_STARTED,
+        LLM_REQUEST_STARTED,
         LLM_RESPONSE,
         LLM_ERROR,
         TOOL_RESULT,
+        TOOL_STARTED,
         FINAL_RESPONSE,
         MAX_ITERATIONS,
         RUN_COMPLETED
@@ -25,6 +29,10 @@ public class AgentEvent {
     private final String message;
     private final String toolName;
     private final AgentRunResult.Status status;
+    private String toolCallId;
+    private String arguments;
+    private ToolResult toolResult;
+    private boolean finalResponse;
 
     private AgentEvent(Type type, int iteration, String message, String toolName, AgentRunResult.Status status) {
         this.type = Objects.requireNonNull(type, "type");
@@ -46,6 +54,35 @@ public class AgentEvent {
     public static AgentEvent llmResponse(int iteration, String message) {
         return new AgentEvent(Type.LLM_RESPONSE, iteration, message, null, null);
     }
+
+    public static AgentEvent llmResponse(int iteration, String message, boolean finalResponse) {
+        AgentEvent event = llmResponse(iteration, message);
+        event.finalResponse = finalResponse;
+        return event;
+    }
+
+    public static AgentEvent llmRequestStarted(int iteration) {
+        return new AgentEvent(Type.LLM_REQUEST_STARTED, iteration, null, null, null);
+    }
+
+    public static AgentEvent toolStarted(int iteration, ToolCall call) {
+        AgentEvent event = new AgentEvent(Type.TOOL_STARTED, iteration, null, call.getToolName(), null);
+        event.toolCallId = call.getId();
+        event.arguments = call.getArguments();
+        return event;
+    }
+
+    public static AgentEvent toolResult(int iteration, ToolCall call, ToolResult result) {
+        AgentEvent event = toolResult(iteration, call.getToolName(), result.getOutput());
+        event.toolCallId = call.getId();
+        event.toolResult = result;
+        return event;
+    }
+
+    public String getToolCallId() { return toolCallId; }
+    public String getArguments() { return arguments; }
+    public ToolResult getToolResult() { return toolResult; }
+    public boolean isFinalResponse() { return finalResponse; }
 
     public static AgentEvent llmError(int iteration, String message) {
         return new AgentEvent(Type.LLM_ERROR, iteration, message, null, AgentRunResult.Status.LLM_ERROR);

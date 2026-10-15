@@ -15,6 +15,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ShellRunToolTest {
 
+    @Test
+    void cancellationIsNotReturnedAsOrdinaryToolFailure() {
+        var source = new com.demo.execution.CancellationSource();
+        source.cancel();
+        var tool = new ShellRunTool();
+        org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.OperationCancelledException.class,
+                () -> tool.execute("{\"command\":\"echo hello\"}", source.token()));
+    }
+
+    @Test
+    void cleanupFailureSuppressedByCancellationStillTakesPrecedence() {
+        var cancellation = new com.demo.execution.OperationCancelledException();
+        var cleanup = new com.demo.execution.ResourceCleanupException("still alive", () -> { });
+        cancellation.addSuppressed(cleanup);
+        org.junit.jupiter.api.Assertions.assertSame(cleanup,
+                org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.ResourceCleanupException.class,
+                        () -> ShellRunTool.checkCleanupFailure(cancellation)));
+    }
+
     @TempDir
     Path tempDir;
 

@@ -9,7 +9,6 @@ import com.demo.model.ToolResult;
 import com.demo.tools.Tool;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -221,14 +220,10 @@ class OpenAICompatibleLLMClientTest {
     @Test
     void timeoutBecomesErrorWithoutRetry() {
         replies.add(new Reply(200, completion("{\"role\":\"assistant\",\"content\":\"late\"}"), 2000));
-        var sdk = OpenAIOkHttpClient.builder().baseUrl(origin + "/v1").apiKey("test-key")
-                .timeout(Duration.ofMillis(500)).maxRetries(0).build();
-        try {
-            var response = new OpenAICompatibleLLMClient(sdk, "model", 10, 0)
+        try (var client = new OpenAICompatibleLLMClient(origin + "/v1", "test-key", "model", 10, 0, Duration.ofMillis(500))) {
+            var response = client
                     .sendMessage(List.of(Message.user("hi")), null);
             assertTrue(response.isError());
-        } finally {
-            sdk.close();
         }
         assertEquals(1, requestCount.get());
     }

@@ -1,7 +1,7 @@
 package com.demo.session;
 
 public class SessionException extends RuntimeException {
-    public enum Reason { NOT_FOUND, INVALID_WORKSPACE, BUSY, INVALID_INPUT, UNSAVED_SESSION, CLOSED, RESOURCE_FAILURE }
+    public enum Reason { NOT_FOUND, INVALID_WORKSPACE, BUSY, INVALID_INPUT, UNSAVED_SESSION, CLOSED, CLOSING, SHUTDOWN_TIMEOUT, RESOURCE_FAILURE }
     private final Reason reason;
 
     public SessionException(Reason reason, String message) {

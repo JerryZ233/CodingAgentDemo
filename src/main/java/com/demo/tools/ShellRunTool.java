@@ -1,18 +1,13 @@
 package com.demo.tools;
 
 import com.demo.model.ToolResult;
+import com.demo.execution.CancellationToken;
+import com.demo.execution.OperationCancelledException;
+import com.demo.execution.ResourceCleanupException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Tool for running shell commands.
@@ -95,6 +90,12 @@ public class ShellRunTool implements Tool {
 
     @Override
     public ToolResult execute(String args) {
+        return execute(args, CancellationToken.none());
+    }
+
+    @Override
+    public ToolResult execute(String args, CancellationToken token) {
+        token.throwIfCancellationRequested();
         String command;
         String shell;
         try {
@@ -124,64 +125,33 @@ public class ShellRunTool implements Tool {
         pb.redirectErrorStream(true);
         pb.directory(workspaceRoot.toFile());
 
-        StringBuilder output = new StringBuilder();
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        try {
-            Process process = pb.start();
-
-            Future<?> outputReader = executor.submit(() -> {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        appendLimited(output, line + System.lineSeparator());
-                    }
-                } catch (IOException ignored) {
-                    appendLimited(output, "Error reading command output" + System.lineSeparator());
-                }
-            });
-
-            boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                outputReader.cancel(true);
+        token.throwIfCancellationRequested();
+        try (ManagedProcess managed = new ManagedProcess(pb, outputLimit)) {
+            ManagedProcess.Result result = managed.await(timeout, token);
+            if (result.timedOut()) {
                 return ToolResult.error(getName(), "Command timed out after " + timeout.toSeconds() + " seconds");
             }
-
-            outputReader.get(1, TimeUnit.SECONDS);
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
-                return ToolResult.success(getName(), output.toString());
-            } else {
-                String errorMessage = "Command exited with code " + exitCode;
-                if (output.length() > 0) {
-                    errorMessage += ". Output: " + output.toString();
-                }
-                return ToolResult.error(getName(), errorMessage);
-            }
+            if (result.exitCode() == 0) return ToolResult.success(getName(), result.output());
+            return ToolResult.error(getName(), "Command exited with code " + result.exitCode()
+                    + (result.output().isEmpty() ? "" : ". Output: " + result.output()));
+        } catch (OperationCancelledException | ResourceCleanupException e) {
+            checkCleanupFailure(e);
+            throw e;
         } catch (InterruptedException e) {
+            checkCleanupFailure(e);
             Thread.currentThread().interrupt();
-            return ToolResult.error(getName(), "Execution interrupted: " + e.getMessage());
+            return ToolResult.error(getName(), "Execution interrupted");
         } catch (Exception e) {
+            checkCleanupFailure(e);
             return ToolResult.error(getName(), "Execution failed: " + e.getMessage());
-        } finally {
-            executor.shutdownNow();
         }
     }
 
-    private void appendLimited(StringBuilder output, String text) {
-        synchronized (output) {
-            int remaining = outputLimit - output.length();
-            if (remaining <= 0) {
-                return;
-            }
-            if (text.length() <= remaining) {
-                output.append(text);
-            } else {
-                output.append(text, 0, remaining);
-                output.append(System.lineSeparator()).append("[output truncated]");
-            }
+    /** try-with-resources suppresses close errors behind cancellation; these must take precedence. */
+    static void checkCleanupFailure(Throwable failure) {
+        for (Throwable suppressed : failure.getSuppressed()) {
+            if (suppressed instanceof ResourceCleanupException resource) throw resource;
+            checkCleanupFailure(suppressed);
         }
     }
-
 }

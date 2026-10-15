@@ -178,7 +178,7 @@ class SessionServiceTest {
                 assertReason(SessionException.Reason.BUSY, () -> service.runTurn(session.id(), "duplicate"));
                 assertReason(SessionException.Reason.BUSY, () -> service.createSession(temp));
                 assertReason(SessionException.Reason.BUSY, () -> service.retrySave(session.id()));
-                assertReason(SessionException.Reason.BUSY, service::close);
+                assertTrue(service.getActiveRun().isPresent());
             } finally {
                 release.countDown();
             }
