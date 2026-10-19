@@ -193,7 +193,7 @@ agent > /exit
 | `llm.api_url` | `LLM_API_URL` | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `llm.model` | `LLM_MODEL` | `glm-4.7-flash` |
 | `llm.provider` | `LLM_PROVIDER` | `auto` |
-| `llm.max_retries` | `LLM_MAX_RETRIES` | `5`（不含首次请求） |
+| `llm.max_retries` | `LLM_MAX_RETRIES` | `10`（不含首次请求） |
 | `llm.retry_initial_delay_ms` | `LLM_RETRY_INITIAL_DELAY_MS` | `2000` |
 | `llm.retry_max_delay_ms` | `LLM_RETRY_MAX_DELAY_MS` | `30000` |
 | `llm.error_details` | `LLM_ERROR_DETAILS` | `false` |
@@ -217,7 +217,7 @@ agent > /exit
 ```yaml
 llm:
   provider: auto
-  max_retries: 5
+  max_retries: 10
   retry_initial_delay_ms: 2000
   retry_max_delay_ms: 30000
   error_details: false
@@ -225,7 +225,7 @@ llm:
 
 `provider` 可为 `auto`、`openai`、`zhipu`、`deepseek`、`dashscope`、`gemini`、`generic`。`auto` 仅通过官方端点的确切主机名识别：`api.openai.com`、`open.bigmodel.cn`、`api.deepseek.com`、`dashscope.aliyuncs.com`、`dashscope-intl.aliyuncs.com`、`dashscope-us.aliyuncs.com`、`generativelanguage.googleapis.com`；未知主机使用 `generic`，不根据模型名推断。第三方网关默认按自身兼容接口语义处理，只有明确保留上游错误格式时才显式配置对应 provider。Gemini 仅使用其 OpenAI 兼容端点，不接入原生接口。
 
-默认每次模型调用最多发送 6 次请求，退避基数为 2、4、8、16、30 秒，增加 0–20% 随机延迟，普通退避不超过配置的最大值。`max_retries: 0` 禁用重试。次数必须非负且小于 2147483647，延迟必须为正且最大值不小于初始值。
+默认每次模型调用最多重试 10 次（含首次请求共 11 次），终端提示为“重新连接...（x/10）”。退避基数为 2、4、8、16 秒，之后为 30 秒，增加 0–20% 随机延迟，普通退避不超过配置的最大值。`max_retries: 0` 禁用重试。次数必须非负且小于 2147483647，延迟必须为正且最大值不小于初始值。
 
 服务商业务码优先于 HTTP 回退规则；明确不可重试的业务错误不会因 HTTP 429/500 被重试。通用规则为：408、429、500、502、503、504 可重试，其余未识别状态（包括 409、501、505、529）直接返回。连接/读取超时、连接重置、临时连接中断可重试；DNS 名称无法解析、TLS 证书错误、请求构造和响应解析失败不重试。不自动改变模型、参数或上下文。
 

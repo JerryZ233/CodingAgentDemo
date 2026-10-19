@@ -19,11 +19,11 @@ class CliRendererTest {
     }
     @Test void retryAndTerminalFailureShowChineseWithoutDiagnosticFields() {
         var error = new LLMError(LLMError.Source.SERVER, 429, Map.of("request_id", "\"secret-request\""), true, 0);
-        var retry = new LLMFailure(error, 1, 6, LLMFailure.State.RETRY_SCHEDULED, 2001L);
+        var retry = new LLMFailure(error, 1, 11, LLMFailure.State.RETRY_SCHEDULED, 2001L);
         event(SessionEvent.Type.LLM_RETRY, new SessionEvent.ModelFailure(7, retry));
         event(SessionEvent.Type.LLM_FAILED, new SessionEvent.ModelFailure(7, retry));
         event(SessionEvent.Type.RUN_FINISHED, new SessionEvent.RunFinished(SessionRun.Status.LLM_ERROR, 7, false, LLMErrorFormatter.format(retry)));
-        assertTrue(text.toString().contains("约 3 秒后重试"));
+        assertTrue(text.toString().contains("重新连接...（1/10）"));
         assertTrue(text.toString().contains("模型请求失败"));
         for (String hidden : List.of("secret-", "[server]", "[client]", "429", "LLM_ERROR", "迭代"))
             assertFalse(text.toString().contains(hidden), text.toString());

@@ -78,9 +78,8 @@ public final class CliRenderer {
             case ITERATION_STARTED -> null;
             case LLM_REQUEST_STARTED -> "正在请求模型…";
             case LLM_RETRY -> {
-                Long delay = ((SessionEvent.ModelFailure) event.payload()).failure().retryInMillis();
-                yield delay == null ? "请求暂未成功，正在重试…" :
-                        "请求暂未成功，将在约 " + Math.max(1, (long) Math.ceil(delay / 1000.0)) + " 秒后重试…";
+                var failure = ((SessionEvent.ModelFailure) event.payload()).failure();
+                yield "重新连接...（" + failure.attempt() + "/" + (failure.maxAttempts() - 1) + "）";
             }
             case LLM_FAILED -> null; // RUN_FINISHED renders the user-facing failure once.
             case ASSISTANT_MESSAGE -> {

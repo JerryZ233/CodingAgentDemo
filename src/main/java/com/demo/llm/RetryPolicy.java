@@ -2,7 +2,7 @@ package com.demo.llm;
 
 /** One policy per model request; maxRetries excludes the first attempt. */
 public record RetryPolicy(int maxRetries, long initialDelayMillis, long maxDelayMillis) {
-    public static final RetryPolicy DEFAULT = new RetryPolicy(5, 2000, 30000);
+    public static final RetryPolicy DEFAULT = new RetryPolicy(10, 2000, 30000);
     public RetryPolicy {
         if (maxRetries < 0 || maxRetries == Integer.MAX_VALUE)
             throw new IllegalArgumentException("llm.max_retries must be nonnegative and less than 2147483647");

@@ -18,7 +18,7 @@ class ConfigLoaderTest {
     @Test void retryOptionsSupportDefaultsOverridesAndValidation() {
         var defaults = ConfigLoader.from(Map.of(), Map.of());
         assertEquals("auto", defaults.getProvider());
-        assertEquals(5, defaults.getRetryPolicy().maxRetries());
+        assertEquals(10, defaults.getRetryPolicy().maxRetries());
         assertEquals(2000, defaults.getRetryPolicy().initialDelayMillis());
         assertEquals(30000, defaults.getRetryPolicy().maxDelayMillis());
         assertTrue(!defaults.isErrorDetails());

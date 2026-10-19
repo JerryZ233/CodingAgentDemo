@@ -6,7 +6,7 @@ llm:
   # auto uses exact registered endpoint hostnames, never the model name
   provider: "auto"
   # Retries per model request, excluding the first attempt (0 disables)
-  max_retries: 5
+  max_retries: 10
   retry_initial_delay_ms: 2000
   retry_max_delay_ms: 30000
   # Include redacted/truncated provider message and selected nested fields

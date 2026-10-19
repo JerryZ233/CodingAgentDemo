@@ -69,7 +69,7 @@ public final class ConfigLoader {
             loadEnabledTools(config),
             getEnvOrYaml(env, "LLM_PROVIDER", "llm.provider", "auto", config),
             new com.demo.llm.RetryPolicy(
-                parseInt("llm.max_retries", getEnvOrYaml(env, "LLM_MAX_RETRIES", "llm.max_retries", "5", config)),
+                parseInt("llm.max_retries", getEnvOrYaml(env, "LLM_MAX_RETRIES", "llm.max_retries", "10", config)),
                 parseInt("llm.retry_initial_delay_ms", getEnvOrYaml(env, "LLM_RETRY_INITIAL_DELAY_MS", "llm.retry_initial_delay_ms", "2000", config)),
                 parseInt("llm.retry_max_delay_ms", getEnvOrYaml(env, "LLM_RETRY_MAX_DELAY_MS", "llm.retry_max_delay_ms", "30000", config))),
             parseBoolean("llm.error_details", getEnvOrYaml(env, "LLM_ERROR_DETAILS", "llm.error_details", "false", config))
