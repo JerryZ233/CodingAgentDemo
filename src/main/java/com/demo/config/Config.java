@@ -20,7 +20,8 @@ public final class Config {
     public static final Set<String> DEFAULT_ENABLED_TOOLS = Set.of(
         "read_file",
         "write_file",
-        "list_files"
+        "list_files",
+        "search_text"
     );
 
     private static volatile Config instance;

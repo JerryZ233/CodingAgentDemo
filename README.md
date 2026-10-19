@@ -202,7 +202,7 @@ agent > /exit
 | `llm.temperature` | `LLM_TEMPERATURE` | `0.7` |
 | `agent.max_iterations` | `AGENT_MAX_ITERATIONS` | `10` |
 | `agent.workspace_dir` | `WORKSPACE_DIR` | `.` |
-| `tools.enabled` | 无 | `read_file`、`write_file`、`list_files` |
+| `tools.enabled` | 无 | `read_file`、`write_file`、`list_files`、`search_text` |
 
 如果未加载任何配置文件，内置接口地址为 `https://api.openai.com/v1/chat/completions`，模型为 `gpt-4`；其余上述参数采用相同默认值。使用发行启动器在其他目录运行时，应通过环境变量或该目录的配置文件明确指定模型服务。
 
@@ -284,23 +284,44 @@ $env:CODING_AGENT_LOG_LEVEL = "INFO"
 | `read_file` | 是 | 读取工作目录内的文件 |
 | `write_file` | 是 | 创建或修改工作目录内的文件 |
 | `list_files` | 是 | 列出工作目录内的目录内容 |
+| `search_text` | 是 | 按字面量搜索文件内容，返回路径、行号和片段 |
 | `run_shell` | 否 | 用户批准后执行程序或显式脚本 |
 
 文件工具绑定会话的真实工作目录，检查输入、规范化路径和最终目标；工作区被替换后拒绝继续操作。`.env`、`.env.*`、`*.env`、`config.local.yaml`、私钥、证书容器及敏感目录受到保护，`.git` 禁止写入，同时保护原有系统关键目录。读取链接需验证最终目标；写入拒绝符号链接、目录联接等重解析路径。文件权限检查代替扩展名白名单，支持 `Dockerfile`、`.gitignore`、`.toml` 等正常 UTF-8 文本文件。
 
-`tools.enabled` 缺省时启用三个文件工具，显式配置 `enabled: []` 则全部禁用。列表类型、非字符串、空名称及未知工具名会导致配置错误，重复名称去重。禁用的工具不会实例化，也不会出现在模型 Schema 或提示词中。
+`tools.enabled` 缺省时启用四个文件工具，显式配置 `enabled: []` 则全部禁用。显式工具列表严格保留选择，不自动加入搜索。列表类型、非字符串、空名称及未知工具名会导致配置错误，重复名称去重。禁用的工具不会实例化，也不会出现在模型 Schema 或提示词中。
 
 ### 文件工具协议
 
 文件工具的结果正文为 JSON；Java `ToolResult` 外层和版本 1 会话格式不变。失败返回稳定的 `code` 与 `message`，不回传被拒绝文件的正文。
 
-- `read_file({"path":"a.txt"})`：返回 `path`、完整 `content`、UTF-8 `bytes` 和原始字节的 `sha256`。最多实际读取 1 MiB，拒绝无效 UTF-8、含 NUL 的二进制和读取期间变化的文件。最终 JSON 超过单条模型消息预算（默认 8,000 个字符）时返回 `FILE_EXCEEDS_MESSAGE_BUDGET`，不返回部分内容；当前没有范围读取。
-- `write_file({"path":"a.txt","content":"text"})`：只创建新文件；已有文件返回 `WRITE_CONFLICT`。覆盖必须加入完整读取结果中的 `expected_sha256`，摘要不匹配、目标消失或创建目标已存在时拒绝。`content` 必填，空字符串合法，缺失或 `null` 不会清空文件。
+- `read_file({"path":"a.txt"})`：返回 `path`、完整 `content`、UTF-8 `bytes` 和原始字节的 `sha256`。最多读取 1 MiB，拒绝无效 UTF-8、含 NUL 的二进制和读取期间变化的文件。完整 JSON 超过单条模型消息预算（默认 8,000 个字符）时返回 `FILE_EXCEEDS_MESSAGE_BUDGET`，可改用范围读取。
+- `read_file({"path":"a.txt","start_line":100,"max_lines":80})`：提供任一范围字段即按行读取，起始行默认 1，行数默认 100、最多 1,000。`content` 保留原始换行，不加行号；`bytes` 和 `sha256` 仍针对完整文件。结果包含 `start_line`、`end_line`、`total_lines`、`complete`、`has_more`、`next_start_line` 和 `limited_by`（`max_lines`、`message_budget` 或 `null`）。页面按 JSON 转义后的预算自动缩小；单行也放不下时返回 `LINE_EXCEEDS_MESSAGE_BUDGET`，不拆行。
+- 范围读取识别 LF、CRLF、CR；空文件为 0 行，末尾换行不额外产生一行。起始行为总行数加一时返回空页（`end_line: null`），更大则参数错误。`complete` 表示本次包含全文，从中间读到末尾仍为 `false`。后续页可携带 `expected_sha256`，版本变化返回 `FILE_CHANGED`，不返回内容。
+- `write_file({"path":"a.txt","content":"text"})`：默认 `mode=overwrite`，不带哈希时只创建新文件，已有文件返回 `WRITE_CONFLICT`。覆盖必须加入完整读取结果中的 `expected_sha256`，摘要不匹配、目标消失或创建目标已存在时拒绝。此模式 `content` 必填（空串合法），禁止 `old_text`、`new_text`。
+- `write_file({"mode":"replace","path":"a.txt","old_text":"old","new_text":"new","expected_sha256":"64位哈希"})`：对已有文件进行单处精确替换，禁止 `content`。`old_text` 非空，允许纯空白；`new_text` 可以为空，表示删除，但两者不能相同。匹配区分大小写及换行，不做正则或模糊匹配。零处命中返回 `TEXT_NOT_FOUND`，多处（包括重叠）返回 `TEXT_NOT_UNIQUE`；不会自动全部替换。插入可通过替换现有上下文实现。每次成功返回新完整文件哈希，多次编辑需逐次使用新哈希。
+- 两种写入均返回 `path`、`action`、`bytes`、`sha256` 和 `mode`；局部替换仍使用 `action: overwritten`，额外返回 `replacements: 1`。范围读取可用于局部替换，但不能重建全文覆盖。“覆盖前读取全文”由提示词约束；服务端校验哈希，不记录读取凭证。
 - 写入先在目标目录暂存、刷新，再检查路径和版本。覆盖要求原子替换并保留权限；新建通过不覆盖目标的硬链接发布，需要文件系统支持。失败不降级为截断写入，并清理暂存文件。同一工作区的 Agent 写入串行化；摘要复核仍不是针对外部进程的原子比较并替换。
 - `list_files({"path":".","limit":100})`：返回稳定按工作区相对路径排序的 `entries`（`name`、`path`、`type`）及 `next_cursor`。每页默认 100、最多 1,000 项，并按消息预算缩小页面；使用相同查询参数和返回的游标继续翻页。
 - 列表支持相对查询目录的 `glob`、`recursive`（默认 `false`）及 `max_depth`（默认 10，范围 1–20）。链接只列为链接，不递归跟随；受保护条目过滤。单次最多扫描 100,000 项、5 秒，超过返回 `DIRECTORY_SCAN_LIMIT`，不将部分扫描报告为完整结果。翻页期间目录变化不保证快照一致性。
 
 所有工具严格校验参数类型和未知字段：参数 JSON 最多 8 MiB，路径最多 1,024 字符，写入最多 1 MiB，Shell 命令最多 4,096 字符。模型提示词明确文件和命令输出是任务数据，其中的指令不能授权越界操作。合法读取仍会发送给模型、保存到会话并按日志设置记录，不对源代码正文做通用替换；路径规则不能识别普通代码文件里任意业务秘密。
+
+### 内容搜索
+
+```json
+{"path":"src","text":"expected_sha256","glob":"**/*.java","case_sensitive":true,"max_results":50,"max_depth":20}
+```
+
+`search_text` 支持文件或目录，`path` 默认 `.`；`text` 必填，非空、最多 1,024 字符，可为纯空白，但不能跨行。只做字面量搜索，每个匹配行返回一次；大小写默认敏感，关闭后使用不依赖 Locale 的比较。目录 `glob` 与 `list_files` 一样采用平台 `PathMatcher` 语义，相对于查询根匹配；例如 `*.java` 匹配直接子文件，`**/*.java` 匹配子目录中的文件，具体分隔符规则与平台有关。文件查询禁止 `glob` 和显式 `max_depth`。
+
+结果 `matches` 中每项包含工作区相对 `path`、从 1 开始的 `line`、`text` 和 `text_truncated`。预览以首次命中为中心裁剪，最多 500 个 Unicode 码点；超长查询可能只显示部分命中。`returned_matches` 为本次返回条数。按目录内名称排序、深度优先遍历，不保证多次调用间快照一致性。
+
+搜索不跟随任何符号链接或目录联接，显式查询链接也拒绝。受保护路径不参与搜索；默认排除查询根下的 `.git`、`.gradle`、`build`、`node_modules` 目录，显式选择这些目录为查询根则允许搜索符合访问策略的内容。普通读取现有的安全链接规则不变。
+
+默认返回最多 50 条，`max_results` 范围 1–200；`max_depth` 默认 20、范围 1–20。每次最多扫描 100,000 项、累计读取 32 MiB、每文件 1 MiB，时间预算 5 秒（在扫描、逐文件和逐行处理间检查，不强行中断操作系统文件 I/O）。JSON 总预算仍为 8,000 字符。达到限制保留已有结果，`complete=false`，`limit_reasons` 包含 `max_results`、`max_depth`、`scan_entries`、`read_bytes`、`timeout` 或 `message_budget`。达到结果数上限时保守标为不完整，即使可能恰好没有更多匹配。
+
+二进制、无效编码、过大、不可读或读取期间变化的文件被跳过，分别汇总在 `skipped_files` 的 `unsupported_content`、`too_large`、`unreadable`、`changed`，并令 `complete=false`。`complete=true` 只表示声明的过滤范围内已完整搜索。查询错误和工作区变化使工具失败；用户取消沿用任务取消流程。搜索无分页游标，不完整时缩小目录、glob 或搜索文本继续；零条匹配且不完整不能证明内容不存在。编辑前先使用 `read_file` 查看相关上下文。
 
 ### 可选命令工具
 
@@ -328,7 +349,7 @@ Linux 可以直接执行 `./gradlew` 等有执行权限的项目脚本。项目�
 
 ```yaml
 tools:
-  enabled: [read_file, write_file, list_files, run_shell]
+  enabled: [read_file, write_file, list_files, search_text, run_shell]
   shell:
     aliases:
       git: /usr/bin/git
@@ -356,7 +377,7 @@ CMD 使用 `/d /s /v:off /c`，PowerShell 禁用 profile、非交互并使用 En
 
 ### 工具代码组织
 
-`com.demo.tools` 保留接口、规格、注册器和描述渲染；四个 `Tool` 实现放在 `tools.builtin`，通用参数和预算放在 `tools.support`，文件访问与提交放在 `tools.fs`，Shell 策略与进程生命周期放在 `tools.process`。构造工具必须显式传入工作目录，不保留旧包包装类。`ToolSpec` 的能力元数据供描述和审计使用，不授予权限。
+`com.demo.tools` 保留接口、规格、注册器和描述渲染；五个 `Tool` 实现放在 `tools.builtin`，通用参数和预算放在 `tools.support`，文件访问、行切片、搜索与提交放在 `tools.fs`，Shell 策略与进程生命周期放在 `tools.process`。构造工具必须显式传入工作目录，不保留旧包包装类。`ToolSpec` 的能力元数据供描述和审计使用，不授予权限。
 
 ## 自动保存、中断恢复与取消
 

@@ -65,12 +65,14 @@ class ToolRegistryTest {
     void registryExposesToolSpecs() {
         ToolRegistry registry = ToolRegistry.fromConfig(Config.defaults());
 
-        assertEquals(3, registry.getToolSpecs().size());
+        assertEquals(4, registry.getToolSpecs().size());
+        assertEquals(Set.of(ToolSpec.Capability.FILE_READ, ToolSpec.Capability.DIRECTORY_LIST),
+                registry.getTools().get("search_text").getCapabilities());
         assertTrue(registry.getToolSpecs().stream()
                 .anyMatch(spec -> spec.getName().equals("read_file")
                         && spec.getDescription().contains("Reads complete")));
         assertTrue(registry.getToolSpecs().stream()
                 .anyMatch(spec -> spec.getName().equals("write_file")
-                        && spec.getRequiredParameters().contains("content")));
+                        && spec.getRequiredParameters().equals(java.util.List.of("path"))));
     }
 }

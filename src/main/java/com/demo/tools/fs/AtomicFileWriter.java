@@ -15,6 +15,23 @@ public final class AtomicFileWriter {
     private final Replacement replacement;
     public AtomicFileWriter(WorkspaceFileAccess access) { this(access, AtomicFileWriter::replace); }
     AtomicFileWriter(WorkspaceFileAccess access, Replacement replacement) { this.access = access; this.replacement = replacement; }
+    public Result replace(String input, String oldText, String newText, String expected) throws IOException {
+        if (expected == null || !expected.matches("[0-9a-fA-F]{64}")
+                || oldText == null || oldText.isEmpty() || newText == null || oldText.equals(newText))
+            throw new IllegalArgumentException("Invalid replacement arguments");
+        synchronized (access.writeLock()) {
+            Path target = access.writable(input);
+            WorkspaceFileAccess.Snapshot snapshot = access.read(input);
+            if (!snapshot.sha256().equalsIgnoreCase(expected)) throw conflict();
+            String text = WorkspaceFileAccess.decode(snapshot.bytes());
+            int offset = text.indexOf(oldText);
+            if (offset < 0) throw new FileAccessException("TEXT_NOT_FOUND", "Original text was not found");
+            if (text.indexOf(oldText, offset + 1) >= 0)
+                throw new FileAccessException("TEXT_NOT_UNIQUE", "Original text matches more than once; provide more context");
+            // write() uses the same reentrant workspace lock and repeats path/hash checks before commit.
+            return write(access.relative(target), text.substring(0, offset) + newText + text.substring(offset + oldText.length()), expected);
+        }
+    }
     public Result write(String input, String content, String expected) throws IOException {
         if (expected != null && !expected.matches("[0-9a-fA-F]{64}")) throw new IllegalArgumentException("Invalid SHA-256");
         byte[] bytes;
@@ -90,7 +107,7 @@ public final class AtomicFileWriter {
         }
         throw new FileAccessException("PERMISSIONS_UNSUPPORTED", "Cannot preserve file permissions");
     }
-    private static FileAccessException conflict() { return new FileAccessException("WRITE_CONFLICT", "Target changed; read the complete file before overwriting"); }
+    private static FileAccessException conflict() { return new FileAccessException("WRITE_CONFLICT", "Target changed; read it again before editing (complete content is required for overwrite)"); }
     public record Result(String path, String action, int bytes, String sha256) { }
     @FunctionalInterface interface Replacement { void replace(Path source, Path target) throws IOException; }
 }

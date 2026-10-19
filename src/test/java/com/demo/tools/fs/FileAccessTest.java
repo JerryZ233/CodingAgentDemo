@@ -28,6 +28,7 @@ class FileAccessTest {
         for (IOException failure : List.of(new AtomicMoveNotSupportedException("", "", "test"), new IOException("disk failure"))) {
             var writer = new AtomicFileWriter(access, (source, destination) -> { throw failure; });
             assertThrows(IOException.class, () -> writer.write("a", "new", sha));
+            assertThrows(IOException.class, () -> writer.replace("a", "old", "new", sha));
             assertEquals("old", Files.readString(target));
             try (var files = Files.list(temp)) { assertEquals(1, files.count()); }
         }

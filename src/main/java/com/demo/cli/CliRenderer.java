@@ -93,6 +93,7 @@ public final class CliRenderer {
                 case "read_file" -> "正在读取文件…";
                 case "write_file" -> "正在写入文件…";
                 case "list_files" -> "正在查看目录…";
+                case "search_text" -> "正在搜索文件内容…";
                 case "run_shell" -> "正在准备命令…";
                 default -> "正在执行操作…";
             };

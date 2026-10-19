@@ -61,6 +61,17 @@ public final class WorkspaceFileAccess {
         if (!real.startsWith(root) || !policy.allowedAbsolute(real) || !policy.allowed(real, false)) throw denied();
         return real;
     }
+    /** Search never follows links, including links in an explicitly supplied query root. */
+    public Path existingNoLinks(String input) throws IOException {
+        Path path = lexical(input, false);
+        Path current = root;
+        for (Path part : root.relativize(path)) {
+            current = current.resolve(part);
+            BasicFileAttributes attrs = Files.readAttributes(current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (attrs.isSymbolicLink() || attrs.isOther() || !current.toRealPath().equals(current)) throw denied();
+        }
+        return existing(input);
+    }
     public Path writable(String input) throws IOException {
         Path path = lexical(input, true);
         if (path.equals(root)) throw denied();
@@ -97,15 +108,21 @@ public final class WorkspaceFileAccess {
         return relative.isEmpty() ? "." : relative;
     }
     public Snapshot read(String input) throws IOException {
+        return read(input, ToolLimits.FILE_BYTES);
+    }
+    Snapshot read(String input, int maxBytes) throws IOException {
         Path path = existing(input);
         BasicFileAttributes before = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         if (!before.isRegularFile()) throw new FileAccessException("NOT_A_FILE", "Expected a regular file");
-        byte[] bytes = readBytes(path);
+        byte[] bytes = readBytes(path, maxBytes);
         BasicFileAttributes after = Files.readAttributes(existing(input), BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         if (!same(before, after)) throw new FileAccessException("FILE_CHANGED", "File changed during reading");
         return new Snapshot(relative(path), bytes, sha256(bytes));
     }
     byte[] readBytes(Path path) throws IOException {
+        return readBytes(path, ToolLimits.FILE_BYTES);
+    }
+    private byte[] readBytes(Path path, int maxBytes) throws IOException {
         verifyBinding();
         // Use a directory-relative no-follow open on providers supporting secure directory streams.
         try (DirectoryStream<Path> directory = Files.newDirectoryStream(path.getParent())) {
@@ -116,8 +133,8 @@ public final class WorkspaceFileAccess {
                 ByteBuffer buffer = ByteBuffer.allocate(8192);
                 while (channel.read(buffer) != -1) {
                     buffer.flip();
-                    if (bytes.size() + buffer.remaining() > ToolLimits.FILE_BYTES)
-                        throw new FileAccessException("FILE_TOO_LARGE", "File exceeds 1 MiB");
+                    if (bytes.size() + buffer.remaining() > maxBytes)
+                        throw new FileAccessException("FILE_TOO_LARGE", "File exceeds the read byte limit");
                     bytes.write(buffer.array(), 0, buffer.remaining()); buffer.clear();
                 }
                 return bytes.toByteArray();

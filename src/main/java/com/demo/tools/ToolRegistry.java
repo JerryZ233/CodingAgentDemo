@@ -15,7 +15,7 @@ import java.util.Objects;
  * Builds the configured tool set and exposes both executable tools and their specs.
  */
 public final class ToolRegistry {
-    public static final Set<String> KNOWN_TOOLS = Set.of("read_file", "write_file", "list_files", "run_shell");
+    public static final Set<String> KNOWN_TOOLS = Set.of("read_file", "write_file", "list_files", "run_shell", "search_text");
 
     private final Map<String, Tool> tools;
     private final List<ToolSpec> toolSpecs;
@@ -38,6 +38,7 @@ public final class ToolRegistry {
         registerIfEnabled(registeredTools, "read_file", () -> new FileReadTool(workspaceRoot), config);
         registerIfEnabled(registeredTools, "write_file", () -> new FileWriteTool(workspaceRoot), config);
         registerIfEnabled(registeredTools, "list_files", () -> new FileListTool(workspaceRoot), config);
+        registerIfEnabled(registeredTools, "search_text", () -> new SearchTextTool(workspaceRoot), config);
         registerIfEnabled(registeredTools, "run_shell", () -> new ShellRunTool(workspaceRoot, config.getShellPolicy()), config);
 
         return new ToolRegistry(registeredTools);

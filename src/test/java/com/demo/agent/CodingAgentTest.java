@@ -62,7 +62,8 @@ class CodingAgentTest {
 
         assertTrue(prompt.contains("read_file"));
         assertTrue(prompt.contains("Required parameters: path."));
-        assertTrue(prompt.contains("Required parameters: path, content."));
+        assertTrue(prompt.contains("Required parameters: text."));
+        assertTrue(prompt.contains("mode=replace"));
     }
 
     @Test

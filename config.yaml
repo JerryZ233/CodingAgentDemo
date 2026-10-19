@@ -49,6 +49,7 @@ tools:
     - read_file
     - write_file
     - list_files
+    - search_text
     # Each new exact plan requires interactive user approval.
     # Runs as the current user, without an OS sandbox; foreground tasks only.
     - run_shell
