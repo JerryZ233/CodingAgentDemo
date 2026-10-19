@@ -1,0 +1,16 @@
+.git
+.gradle
+build
+bin
+config.local.yaml
+.env
+.env.*
+.aws
+.codex
+.agents
+**/config.local.yaml
+eval/results
+**/__pycache__
+*.log
+.idea
+.vscode

@@ -23,6 +23,15 @@ Thumbs.db
 
 # Local secrets
 config.local.yaml
+config.local.yml
+.env
+.env.*
+eval/results/
+**/__pycache__/
+
+# Generated demo output
+/result.txt
+/test/result.txt
 
 # Temporary files
 *.swp

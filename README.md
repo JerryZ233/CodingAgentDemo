@@ -504,6 +504,18 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
 
 ## 构建与测试
 
+### 端到端 Agent 评测
+
+新增基于 Harbor 与 Docker 的本地评测流程：运行 Agent 修改 Java 样例工程，由独立验收容器分别运行功能和回归测试，并保存 Token 消耗、耗时与 JSON/CSV 报告。配置与运行方式见 [eval/README.md](eval/README.md)。
+
+```powershell
+# 不调用模型，先用参考解答验证容器与验收链路
+.\eval\run.ps1 -Mode oracle
+
+# 仅在明确要求真实模型评测时执行；设置 API Key 不会自动允许调用
+.\eval\run.ps1 -Mode agent -AllowModelCalls
+```
+
 **Windows PowerShell：**
 
 ```powershell

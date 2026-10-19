@@ -47,6 +47,13 @@ public interface LLMClient extends AutoCloseable {
         private final List<ToolCall> toolCalls;
         private final boolean error;
         private final LLMFailure failure;
+        private final TokenUsage usage;
+
+        public LLMResponse(String text, List<ToolCall> toolCalls, TokenUsage usage) {
+            this(text, toolCalls, false, null, usage);
+        }
+
+        public java.util.Optional<TokenUsage> getUsage() { return java.util.Optional.ofNullable(usage); }
         
         public LLMResponse(String text, List<ToolCall> toolCalls) {
             this(text, toolCalls, false);
@@ -57,10 +64,15 @@ public interface LLMClient extends AutoCloseable {
         }
 
         private LLMResponse(String text, List<ToolCall> toolCalls, boolean error, LLMFailure failure) {
+            this(text, toolCalls, error, failure, null);
+        }
+
+        private LLMResponse(String text, List<ToolCall> toolCalls, boolean error, LLMFailure failure, TokenUsage usage) {
             this.text = text;
             this.toolCalls = toolCalls;
             this.error = error;
             this.failure = failure;
+            this.usage = usage;
         }
 
         public static LLMResponse error(LLMFailure failure) {

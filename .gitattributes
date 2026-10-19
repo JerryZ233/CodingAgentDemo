@@ -1,0 +1,4 @@
+eval/**/*.sh text eol=lf
+eval/**/*.py text eol=lf
+eval/**/Dockerfile text eol=lf
+eval/**/*.Dockerfile text eol=lf

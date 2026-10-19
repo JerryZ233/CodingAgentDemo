@@ -24,6 +24,18 @@ class OpenAIResponseMapper {
             }
             calls.add(new ToolCall(id, name, arguments));
         }
-        return new LLMResponse(message.content().orElse(""), calls);
+        return new LLMResponse(message.content().orElse(""), calls, usage(completion));
+    }
+
+    static com.demo.llm.TokenUsage usage(ChatCompletion completion) {
+        return completion.usage().map(u -> {
+            Long cache = u.promptTokensDetails().flatMap(d -> d.cachedTokens()).orElse(null);
+            // DeepSeek uses a provider-specific top-level usage field instead of prompt_tokens_details.
+            if (cache == null && u._additionalProperties().containsKey("prompt_cache_hit_tokens")) {
+                Object value = u._additionalProperties().get("prompt_cache_hit_tokens").asNumber().orElse(null);
+                if (value instanceof Number number) cache = number.longValue();
+            }
+            return new com.demo.llm.TokenUsage(u.promptTokens(), u.completionTokens(), u.totalTokens(), cache);
+        }).orElse(null);
     }
 }

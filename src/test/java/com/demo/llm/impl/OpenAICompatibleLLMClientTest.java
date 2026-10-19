@@ -406,6 +406,72 @@ class OpenAICompatibleLLMClientTest {
 
     private static Reply ok(String message) { return new Reply(200, completion(message), 0); }
 
+    @Test void reportsProviderUsageForEveryActualAttemptIncludingRetry() {
+        replies.add(new Reply(429, "{}", 0));
+        String body = completion("{\"role\":\"assistant\",\"content\":\"done\"}");
+        body = body.substring(0, body.length() - 1) + ",\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25,\"prompt_tokens_details\":{\"cached_tokens\":3}}}";
+        replies.add(new Reply(200, body, 0));
+        var attempts = new ArrayList<com.demo.llm.RequestAttempt>();
+        Config config = new Config(origin + "/v1", "custom-model", "test-key", 128, 0, 3, ".", java.util.Set.of(),
+                "generic", new RetryPolicy(1, 1, 1), false);
+        try (var client = new OpenAICompatibleLLMClient(config, attempts::add)) {
+            var response = client.sendMessage(List.of(Message.user("hi")), null);
+            assertFalse(response.isError());
+            assertEquals(20, response.getUsage().orElseThrow().inputTokens());
+        }
+        assertEquals(2, attempts.size());
+        assertNull(attempts.get(0).usage());
+        assertEquals(2, attempts.get(1).attempt());
+        assertEquals(3L, attempts.get(1).usage().cachedTokens());
+        assertTrue(attempts.stream().allMatch(a -> a.elapsedMillis() >= 0));
+    }
+
+    @Test void missingUsageStaysUnknownAndInvalidMappedResponseStillRecordsUsage() {
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"done\"}"));
+        replies.add(new Reply(200, "{\"id\":\"test\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"test\",\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}}", 0));
+        var attempts = new ArrayList<com.demo.llm.RequestAttempt>();
+        Config config = new Config(origin + "/v1", "custom-model", "test-key", 128, 0, 3, ".", java.util.Set.of(),
+                "generic", new RetryPolicy(0, 1, 1), false);
+        try (var client = new OpenAICompatibleLLMClient(config, attempts::add)) {
+            assertTrue(client.sendMessage(List.of(Message.user("hi")), null).getUsage().isEmpty());
+            assertTrue(client.sendMessage(List.of(Message.user("hi")), null).isError());
+        }
+        assertNull(attempts.get(0).usage());
+        assertEquals(9, attempts.get(1).usage().totalTokens());
+    }
+
+    @Test void readsDeepSeekCacheHitTokensWithoutDoubleCountingInput() {
+        String body = completion("{\"role\":\"assistant\",\"content\":\"done\"}");
+        body = body.substring(0, body.length() - 1) + ",\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25,\"prompt_cache_hit_tokens\":12}}";
+        replies.add(new Reply(200, body, 0));
+        Config config = new Config(origin + "/v1", "custom-model", "test-key", 128, 0, 3, ".", java.util.Set.of(),
+                "deepseek", new RetryPolicy(0, 1, 1), false);
+        try (var client = new OpenAICompatibleLLMClient(config)) {
+            var usage = client.sendMessage(List.of(Message.user("hi")), null).getUsage().orElseThrow();
+            assertEquals(20, usage.inputTokens());
+            assertEquals(12L, usage.cachedTokens());
+            assertEquals(25, usage.totalTokens());
+        }
+    }
+
+    @Test void recordsCancelledHttpAttemptWithUnknownUsage() throws Exception {
+        replies.add(new Reply(200, completion("{\"role\":\"assistant\",\"content\":\"late\"}"), 2000));
+        var attempts = new CopyOnWriteArrayList<com.demo.llm.RequestAttempt>();
+        var cancellation = new CancellationSource();
+        Config config = new Config(origin + "/v1", "custom-model", "test-key", 128, 0, 3, ".", java.util.Set.of(),
+                "generic", new RetryPolicy(0, 1, 1), false);
+        try (var client = new OpenAICompatibleLLMClient(config, attempts::add)) {
+            var future = executor.submit(() -> client.sendMessage(List.of(Message.user("hi")), null, cancellation.token()));
+            takeRequest();
+            cancellation.cancel();
+            var error = assertThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
+            assertInstanceOf(OperationCancelledException.class, error.getCause());
+        }
+        assertEquals(1, attempts.size());
+        assertNull(attempts.get(0).usage());
+        assertFalse(attempts.get(0).responseReceived());
+    }
+
     private static String completion(String message) {
         return "{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"custom-model\","
                 + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":" + message + "}]}";

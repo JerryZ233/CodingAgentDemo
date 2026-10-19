@@ -39,6 +39,13 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     private final ProviderErrorAdapter errors;
     private final RetryWaiter waiter;
     private final DoubleSupplier random;
+    private Consumer<com.demo.llm.RequestAttempt> attemptObserver = ignored -> { };
+
+    /** Metrics are scoped to this client; regular interactive callers use the no-op observer. */
+    public OpenAICompatibleLLMClient(Config config, Consumer<com.demo.llm.RequestAttempt> observer) {
+        this(config);
+        this.attemptObserver = java.util.Objects.requireNonNull(observer);
+    }
 
     public OpenAICompatibleLLMClient() {
         this(Config.getInstance());
@@ -115,12 +122,16 @@ public class OpenAICompatibleLLMClient implements LLMClient {
             log.debug("Model request attempt started attempt={} max_attempts={} model={} message_count={}",
                     attempt, maxAttempts, com.demo.logging.LogData.quote(model), messages.size());
             LLMError error;
+            com.demo.llm.TokenUsage usage = null;
+            boolean responseReceived = false;
             var scopedTransport = new CancellationAwareHttpClient(transport, token);
             try {
                 var scoped = client.withOptions(options -> options.httpClient(scopedTransport));
                 var response = scoped.async().chat().completions().create(params);
                 try (var registration = token.onCancellation(() -> response.cancel(true))) {
                     var completion = response.get();
+                    responseReceived = true;
+                    usage = OpenAIResponseMapper.usage(completion);
                     checkActive(token);
                     var mapped = responseMapper.map(completion);
                     if (!mapped.isError()) {
@@ -152,6 +163,9 @@ public class OpenAICompatibleLLMClient implements LLMClient {
             } catch (OpenAIException | IllegalArgumentException | IllegalStateException invalid) {
                 checkActive(token);
                 error = errors.local(invalid, LLMError.Source.RESPONSE);
+            } finally {
+                attemptObserver.accept(new com.demo.llm.RequestAttempt(attempt,
+                        (System.nanoTime() - started) / 1_000_000, usage, responseReceived));
             }
             checkActive(token);
             if (!error.retryable()) return failure(error, attempt, LLMFailure.State.NON_RETRYABLE);
