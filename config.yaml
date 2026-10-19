@@ -49,9 +49,9 @@ tools:
     - read_file
     - write_file
     - list_files
-    # Disabled by default. Each new exact plan requires interactive user approval.
+    # Each new exact plan requires interactive user approval.
     # Runs as the current user, without an OS sandbox; foreground tasks only.
-    # - run_shell
+    - run_shell
   # shell:
   #   aliases:
   #     git: "C:/Program Files/Git/cmd/git.exe"
