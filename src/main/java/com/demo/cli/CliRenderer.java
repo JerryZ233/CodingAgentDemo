@@ -6,15 +6,17 @@ import com.demo.session.*;
 
 public final class CliRenderer {
     private final TerminalIO terminal;
+    private String model = "模拟模式（未调用真实模型）";
     public CliRenderer(TerminalIO terminal) { this.terminal = terminal; }
     public void welcome(Config config) {
-        terminal.print("=== Coding Agent ===\n" + (config.isConfigured() ? "模型：" + config.getModel() : "Dummy 模式：未配置 API Key，不会调用真实模型。"));
+        model = config.isConfigured() ? config.getModel() : "模拟模式（未调用真实模型）";
+        terminal.print("=== 编程助手 ===" + (config.isConfigured() ? "" : "\n未配置模型密钥：不会调用真实模型或执行文件操作。"));
         if (terminal instanceof PlainTerminalIO)
             terminal.print("普通行模式：使用 /cancel 取消任务；Ctrl+C 按操作系统退出信号处理。");
     }
     public static String usage() {
         return """
-                用法：CodingAgentDemo [--workspace <目录> | --session <UUID>] [--session-dir <目录>] [--] [任务]
+                用法：CodingAgentDemo [--workspace <目录> | --session <会话标识>] [--session-dir <目录>] [--] [任务]
                 无任务：进入交互会话；有任务：执行一轮、自动保存并退出。
                 --help 显示此帮助。
                 """;
@@ -23,11 +25,11 @@ public final class CliRenderer {
         terminal.print("""
                 /new [目录]          创建并切换会话（省略目录使用配置默认值）
                 /sessions            列出历史会话
-                /resume <完整UUID>   恢复会话
-                /history             查看完整历史
+                /resume <序号>       恢复列表中的会话（先执行 /sessions）
+                /history             查看对话历史
                 /status              查看会话及执行状态
                 /cancel              请求取消当前任务
-                /retry-save [UUID]   重试保存（不会继续原任务）
+                /retry-save [序号]   重试保存（省略序号保存当前会话，不会继续原任务）
                 /exit 或 /quit       关闭并退出
                 普通文本提交任务；// 转义任务开头的 /。
                 """ + (terminal instanceof PlainTerminalIO ? "普通行模式：用 /cancel 取消；输入 EOF 退出。\n"
@@ -36,66 +38,83 @@ public final class CliRenderer {
                                   : "执行期间不接受新任务或切换会话。"));
     }
     public void selecting(java.nio.file.Path defaultDirectory) {
-        terminal.print("默认工作目录：" + defaultDirectory + "\n输入目录或按 Enter 使用默认值；/sessions 查看历史，/resume <id> 恢复，/help 查看帮助。");
+        terminal.print("默认工作目录：" + defaultDirectory + "\n输入目录或按回车使用默认值；/sessions 查看历史，/resume <序号> 恢复，/help 查看帮助。");
     }
     public void session(SessionSnapshot snapshot) {
-        terminal.print("会话：" + snapshot.id() + "\n标题：" + snapshot.title() + "\n工作目录：" + snapshot.workspace()
-                + "\n最近状态：" + (snapshot.lastRun() == null ? "尚未运行" : snapshot.lastRun().status())
+        terminal.print("会话：" + snapshot.title() + "\n模型：" + model + "\n工作目录：" + snapshot.workspace()
+                + "\n最近状态：" + ChineseMessages.status(snapshot.lastRun() == null ? null : snapshot.lastRun().status())
                 + (snapshot.unsaved() ? "\n存在未保存状态，请使用 /retry-save。" : ""));
     }
     public void catalog(SessionCatalog catalog) {
         if (catalog.sessions().isEmpty()) terminal.print("暂无历史会话。");
-        for (SessionSummary summary : catalog.sessions()) terminal.print(summary.id() + " | " + summary.title()
-                + " | " + summary.workspace() + " | " + summary.updatedAt() + " | " + summary.lastRunStatus()
-                + (summary.unsaved() ? " | 未保存" : ""));
-        for (SessionCatalog.LoadIssue issue : catalog.issues())
-            error("无法读取 " + issue.fileName() + "：" + issue.reason() + "；" + issue.message());
+        int index = 1;
+        for (SessionSummary summary : catalog.sessions()) terminal.print(index++ + " | " + summary.title()
+                + " | " + summary.workspace() + " | " + java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                        .withZone(java.time.ZoneId.systemDefault()).format(summary.updatedAt())
+                + " | " + ChineseMessages.status(summary.lastRunStatus()) + (summary.unsaved() ? " | 未保存" : ""));
+        if (!catalog.issues().isEmpty()) error("部分历史会话无法读取，详细原因已记录到日志。");
     }
     public void history(SessionSnapshot snapshot) {
-        if (snapshot.messages().isEmpty()) terminal.print("暂无消息。");
+        boolean displayed = false;
         for (Message message : snapshot.messages()) {
-            terminal.print("[" + message.getRole() + "]" + (message.getToolCallId() == null ? "" :
-                    " " + message.getToolName() + " id=" + message.getToolCallId() + " success=" + message.getToolSuccess())
-                    + "\n" + (message.getContent() == null ? "" : message.getContent()));
-            if (message.getToolCalls() != null) for (var call : message.getToolCalls())
-                terminal.print("调用 " + call.getToolName() + " id=" + call.getId() + "\n" + call.getArguments());
+            boolean user = "user".equals(message.getRole());
+            if (!user && !"assistant".equals(message.getRole())) continue;
+            String content = message.getContent();
+            if (content == null || content.isBlank() || (!user && isDiagnostic(content, snapshot))) continue;
+            terminal.print((user ? "用户：" : "助手：") + "\n" + content);
+            displayed = true;
         }
+        if (!displayed) terminal.print("暂无对话消息。");
     }
     public void status(SessionSnapshot snapshot, RunHandle handle) {
         session(snapshot);
-        if (handle != null) terminal.print("运行：" + handle.runId() + "；实时状态：" + handle.state());
+        if (handle != null) terminal.print("当前状态：" + ChineseMessages.state(handle.state()));
         else terminal.print("当前空闲。");
+        terminal.print(snapshot.unsaved() ? "保存情况：尚未保存。" : "保存情况：已保存。");
     }
     public void event(SessionEvent event) {
         String text = switch (event.type()) {
-            case RUN_STARTED -> "任务已提交，运行 ID：" + event.runId();
-            case ITERATION_STARTED -> "第 " + ((SessionEvent.Progress) event.payload()).iteration() + " 次迭代";
+            case RUN_STARTED -> null;
+            case ITERATION_STARTED -> null;
             case LLM_REQUEST_STARTED -> "正在请求模型…";
-            case LLM_RETRY -> com.demo.llm.LLMErrorFormatter.format(((SessionEvent.ModelFailure) event.payload()).failure());
-            case LLM_FAILED -> null; // Final persisted diagnostic is rendered once with RUN_FINISHED.
+            case LLM_RETRY -> {
+                Long delay = ((SessionEvent.ModelFailure) event.payload()).failure().retryInMillis();
+                yield delay == null ? "请求暂未成功，正在重试…" :
+                        "请求暂未成功，将在约 " + Math.max(1, (long) Math.ceil(delay / 1000.0)) + " 秒后重试…";
+            }
+            case LLM_FAILED -> null; // RUN_FINISHED renders the user-facing failure once.
             case ASSISTANT_MESSAGE -> {
                 String answer = ((SessionEvent.AssistantMessage) event.payload()).text();
-                yield answer == null || answer.isEmpty() ? null : answer;
+                yield answer == null || answer.isBlank() ? null : answer;
             }
-            case TOOL_STARTED -> "正在执行工具：" + ((SessionEvent.ToolStarted) event.payload()).name();
+            case TOOL_STARTED -> switch (((SessionEvent.ToolStarted) event.payload()).name()) {
+                case "read_file" -> "正在读取文件…";
+                case "write_file" -> "正在写入文件…";
+                case "list_files" -> "正在查看目录…";
+                case "run_shell" -> "正在执行命令…";
+                default -> "正在执行操作…";
+            };
             case TOOL_RESULT -> {
                 var tool = (SessionEvent.ToolFinished) event.payload();
-                yield "工具 " + tool.name() + (tool.result().isSuccess() ? " 成功：" : " 失败：") + abbreviate(tool.result().getOutput());
+                yield tool.result().isSuccess() ? null : "本次操作未成功，正在继续处理…";
             }
             case CANCEL_REQUESTED -> "已请求取消，等待当前操作及资源清理完成…";
             case RUN_FINISHED -> {
                 var result = (SessionEvent.RunFinished) event.payload();
-                yield "任务结束：" + result.status() + "；迭代 " + result.iterations()
-                        + (result.unsaved() ? "；未保存，请修复存储并使用 /retry-save" : "")
-                        + (result.diagnostic() == null ? "" : "\n" + result.diagnostic());
+                String message = ChineseMessages.finished(result.status());
+                if (result.unsaved() && result.status() != SessionRun.Status.STORAGE_ERROR)
+                    message = (message == null ? "" : message + "\n")
+                            + "尚未保存，请修复存储并使用 /retry-save。已完成的文件修改会保留。";
+                yield message;
             }
         };
         if (text != null) terminal.printAbove(text);
     }
-    static String abbreviate(String text) {
-        if (text == null) return "";
-        int count = text.codePointCount(0, text.length());
-        return count <= 2000 ? text : text.substring(0, text.offsetByCodePoints(0, 2000)) + "…（完整结果见 /history）";
+    private static boolean isDiagnostic(String text, SessionSnapshot snapshot) {
+        return text.startsWith("[server]\n") || text.startsWith("[client]\n")
+                || text.startsWith("Error: ") || text.equals("Failed to get response from LLM.")
+                || (snapshot.lastRun() != null && snapshot.lastRun().status() == SessionRun.Status.LLM_ERROR
+                        && text.equals(snapshot.lastRun().message()));
     }
     public void cancellation(RunHandle.CancelResult result) {
         terminal.print(switch (result) {
@@ -108,10 +127,6 @@ public final class CliRenderer {
     public void info(String message) { terminal.print(message); }
     public void error(String message) { terminal.error("错误：" + message); }
     public void failure(Throwable error) {
-        if (error instanceof com.demo.session.storage.SessionStorageException)
-            error("存储失败：" + error.getMessage() + "；修复后使用 /retry-save。");
-        else if (error instanceof SessionException session)
-            error(session.getReason() + "：" + error.getMessage());
-        else error("操作失败：" + error.getClass().getSimpleName());
+        error(ChineseMessages.failure(error));
     }
 }

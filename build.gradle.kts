@@ -18,6 +18,10 @@ repositories {
 }
 
 dependencies {
+    implementation("org.apache.logging.log4j:log4j-api:2.26.1")
+    // Programmatic bootstrap and appender health checks use Core APIs.
+    implementation("org.apache.logging.log4j:log4j-core:2.26.1")
+    runtimeOnly("org.apache.logging.log4j:log4j-slf4j2-impl:2.26.1")
     implementation("org.jline:jline-reader:3.30.6")
     implementation("org.jline:jline-terminal:3.30.6")
     runtimeOnly("org.jline:jline-terminal-jni:3.30.6")
@@ -36,6 +40,8 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    systemProperty("coding.agent.log.dir", layout.buildDirectory.dir("test-logs").get().asFile.absolutePath)
+    systemProperty("coding.agent.test.classpath", sourceSets.main.get().runtimeClasspath.asPath)
 }
 
 tasks.named<JavaExec>("run") {

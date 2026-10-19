@@ -34,7 +34,9 @@ public class AgentLoop {
         this.llmClient = Objects.requireNonNull(client);
         this.tools = Map.copyOf(tools);
         this.observer = Objects.requireNonNull(observer);
-        this.eventLog = Objects.requireNonNull(log);
+        AgentEventLog supplied = Objects.requireNonNull(log);
+        AgentEventLog diagnostics = new LoggingAgentEventLog();
+        this.eventLog = event -> { diagnostics.append(event); supplied.append(event); };
         this.maxIterations = maxIterations;
     }
 
@@ -53,41 +55,45 @@ public class AgentLoop {
                 token.throwIfCancellationRequested();
                 iteration = next;
                 final int current = iteration;
-                observer.onIterationStarted(iteration);
-                events.append(AgentEvent.iterationStarted(iteration));
-                var messages = context.buildMessagesForLLM();
-                token.runIfActive(() -> events.append(AgentEvent.llmRequestStarted(current)));
-                LLMClient.LLMResponse response = llmClient.sendMessage(messages, context.getToolDescriptions(), token,
-                        failure -> token.runIfActive(() -> events.append(AgentEvent.llmRetry(current, failure))));
-                token.throwIfCancellationRequested();
-                if (response == null || response.isError()) {
-                    String error = response == null ? "Failed to get response from LLM."
-                            : response.getFailure().isPresent() ? response.getText() : "Error: " + response.getText();
-                    if (response != null) token.runIfActive(() -> context.addAssistantMessage(error));
+                try (var iterationScope = org.apache.logging.log4j.CloseableThreadContext.put("iteration", String.valueOf(current))) {
+                    observer.onIterationStarted(iteration);
+                    events.append(AgentEvent.iterationStarted(iteration));
+                    var messages = context.buildMessagesForLLM();
+                    token.runIfActive(() -> events.append(AgentEvent.llmRequestStarted(current)));
+                    LLMClient.LLMResponse response = llmClient.sendMessage(messages, context.getToolDescriptions(), token,
+                            failure -> token.runIfActive(() -> events.append(AgentEvent.llmRetry(current, failure))));
+                    token.throwIfCancellationRequested();
+                    if (response == null || response.isError()) {
+                        String error = response == null ? "Failed to get response from LLM."
+                                : response.getFailure().isPresent() ? response.getText() : "Error: " + response.getText();
+                        if (response != null) token.runIfActive(() -> context.addAssistantMessage(error));
+                        checkpoint.save(context, iteration);
+                        observer.onLlmError(error);
+                        events.append(AgentEvent.llmError(iteration, error,
+                                response == null ? null : response.getFailure().orElse(null)));
+                        return complete(AgentRunResult.llmError(error, iteration), events);
+                    }
+                    String text = response.getText() == null ? "" : response.getText();
+                    boolean finalResponse = !response.hasToolCalls();
+                    token.runIfActive(() -> {
+                        if (finalResponse) context.addAssistantMessage(text);
+                        else context.addAssistantToolCalls(response.getText(), response.getToolCalls());
+                    });
                     checkpoint.save(context, iteration);
-                    observer.onLlmError(error);
-                    events.append(AgentEvent.llmError(iteration, error,
-                            response == null ? null : response.getFailure().orElse(null)));
-                    return complete(AgentRunResult.llmError(error, iteration), events);
-                }
-                String text = response.getText() == null ? "" : response.getText();
-                boolean finalResponse = !response.hasToolCalls();
-                token.runIfActive(() -> {
-                    if (finalResponse) context.addAssistantMessage(text);
-                    else context.addAssistantToolCalls(response.getText(), response.getToolCalls());
-                });
-                checkpoint.save(context, iteration);
-                events.append(AgentEvent.llmResponse(iteration, text, finalResponse));
-                if (finalResponse) {
-                    token.throwIfCancellationRequested();
-                    observer.onFinalResponse(text);
-                    events.append(AgentEvent.finalResponse(iteration, text));
-                    return complete(AgentRunResult.completed(text, iteration), events);
-                }
-                for (ToolCall call : response.getToolCalls()) {
-                    token.runIfActive(() -> events.append(AgentEvent.toolStarted(current, call)));
-                    execute(call, context, iteration, checkpoint, token, events);
-                    token.throwIfCancellationRequested();
+                    events.append(AgentEvent.llmResponse(iteration, text, finalResponse));
+                    if (finalResponse) {
+                        token.throwIfCancellationRequested();
+                        observer.onFinalResponse(text);
+                        events.append(AgentEvent.finalResponse(iteration, text));
+                        return complete(AgentRunResult.completed(text, iteration), events);
+                    }
+                    for (ToolCall call : response.getToolCalls()) {
+                        try (var toolScope = org.apache.logging.log4j.CloseableThreadContext.put("tool_call_id", com.demo.logging.LogData.quote(call.getId()))) {
+                            token.runIfActive(() -> events.append(AgentEvent.toolStarted(current, call)));
+                            execute(call, context, iteration, checkpoint, token, events);
+                            token.throwIfCancellationRequested();
+                        }
+                    }
                 }
             }
             token.throwIfCancellationRequested();
@@ -128,6 +134,8 @@ public class AgentLoop {
             } catch (ResourceCleanupException e) {
                 throw e; // Resource failure is not an ordinary tool error.
             } catch (Exception e) {
+                com.demo.logging.Logging.logger(AgentLoop.class).warn("Tool execution raised exception name={} exception={}",
+                        com.demo.logging.LogData.quote(call.getToolName()), com.demo.logging.LogData.exception(e));
                 result = ToolResult.error(call.getToolName(), "Error: Tool '" + call.getToolName() + "' failed: " + e.getMessage());
             }
         }

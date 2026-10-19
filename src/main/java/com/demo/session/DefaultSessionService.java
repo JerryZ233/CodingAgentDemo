@@ -31,6 +31,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** One admitted background turn. Only that worker mutates its session; readers see checkpoints. */
 public final class DefaultSessionService implements SessionService {
+    private final org.apache.logging.log4j.Logger log = com.demo.logging.Logging.logger(DefaultSessionService.class);
     public enum ClientOwnership { OWNED, BORROWED }
     private enum Lifecycle { OPEN, CLOSING, CLOSED }
     private final Config config;
@@ -75,6 +76,7 @@ public final class DefaultSessionService implements SessionService {
     DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
                           ClientOwnership ownership, ExecutorService executor, Duration closeTimeout) {
         this.config = Objects.requireNonNull(config);
+        com.demo.logging.LogData.registerSecret(config.getApiKey());
         this.client = Objects.requireNonNull(client);
         this.repository = Objects.requireNonNull(repository);
         this.clock = Objects.requireNonNull(clock);
@@ -96,6 +98,7 @@ public final class DefaultSessionService implements SessionService {
                     now, now, List.of(), null, true));
             persist(session);
             sessions.put(session.id, session);
+            log.info("Session created session_id={} workspace={}", session.id, com.demo.logging.LogData.quote(real));
             return session.published;
         } finally { mutations.unlock(); }
     }
@@ -103,7 +106,14 @@ public final class DefaultSessionService implements SessionService {
     @Override
     public SessionCatalog listSessions() {
         ensureReadable();
-        SessionCatalog disk = repository.list();
+        SessionCatalog disk;
+        try { disk = repository.list(); }
+        catch (SessionStorageException e) {
+            log.error("Session catalog load failed exception={}", com.demo.logging.LogData.exception(e));
+            throw e;
+        }
+        for (var issue : disk.issues()) log.warn("Session catalog entry could not be loaded file={} reason={} diagnostic={}",
+                com.demo.logging.LogData.quote(issue.fileName()), issue.reason(), com.demo.logging.LogData.quote(issue.message()));
         Map<String, SessionSummary> summaries = new HashMap<>();
         disk.sessions().forEach(summary -> summaries.put(summary.id(), summary));
         sessions.values().forEach(session -> summaries.put(session.id, SessionSummary.from(session.published)));
@@ -167,6 +177,15 @@ public final class DefaultSessionService implements SessionService {
     }
 
     private void executeTurn(Session session, String message, ActiveRun run) {
+        try (var loggingScope = org.apache.logging.log4j.CloseableThreadContext.put("session_id", session.id)
+                .put("run_id", run.runId())) {
+            executeLoggedTurn(session, message, run);
+        }
+    }
+
+    private void executeLoggedTurn(Session session, String message, ActiveRun run) {
+        log.info("Turn started");
+        if (log.isDebugEnabled()) log.debug("User message text={}", com.demo.logging.LogData.quote(message));
         worker = Thread.currentThread();
         Throwable failure = null;
         if (session.context.getMessages().isEmpty()) session.title = titleFor(message);
@@ -194,6 +213,7 @@ public final class DefaultSessionService implements SessionService {
             markStorageFailure(session);
             failure = e;
         } catch (Throwable e) {
+            log.error("Turn failed exception={}", com.demo.logging.LogData.exception(e));
             run.beginFinishing();
             if (e instanceof ResourceCleanupException resource) cleanupFailure = resource;
             session.apply(recovery.recover(session.publish(), now(session)).snapshot());
@@ -222,6 +242,8 @@ public final class DefaultSessionService implements SessionService {
             finally { mutations.unlock(); }
             run.drained.countDown();
             run.publishCompletion(session.published, failure);
+            log.info("Turn finished status={} iterations={} unsaved={}", session.lastRun.status(),
+                    session.lastRun.iterations(), session.unsaved);
         }
     }
 
@@ -231,6 +253,7 @@ public final class DefaultSessionService implements SessionService {
         try {
             Session session = loadSession(id);
             savePending(session);
+            log.info("Session save retried session_id={}", id);
             return session.published;
         } finally { mutations.unlock(); }
     }
@@ -278,9 +301,15 @@ public final class DefaultSessionService implements SessionService {
                 }
             }
             lifecycle = Lifecycle.CLOSED;
+            log.info("Session service closed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.error("Session service close interrupted");
             throw shutdownTimeout();
+        } catch (RuntimeException e) {
+            if (!(e instanceof SessionStorageException))
+                log.error("Session service close failed exception={}", com.demo.logging.LogData.exception(e));
+            throw e;
         } finally { closeGate.unlock(); }
     }
 
@@ -296,12 +325,17 @@ public final class DefaultSessionService implements SessionService {
         SessionSnapshot stored;
         try { stored = repository.load(id); }
         catch (SessionStorageException e) {
+            log.log(e.getReason() == SessionStorageException.Reason.NOT_FOUND
+                            ? org.apache.logging.log4j.Level.WARN : org.apache.logging.log4j.Level.ERROR,
+                    "Session load failed session_id={} exception={}", id, com.demo.logging.LogData.exception(e));
             if (e.getReason() == SessionStorageException.Reason.NOT_FOUND) {
                 throw new SessionException(SessionException.Reason.NOT_FOUND, "Session not found: " + id, e);
             }
             throw e;
         }
         SessionRecovery.RecoveryResult restored = recovery.recover(stored, clock.instant());
+        log.info("Session restored session_id={} workspace={}", id, com.demo.logging.LogData.quote(stored.workspace()));
+        if (restored.changed()) log.warn("Interrupted session recovered without replay session_id={}", id);
         Session session = new Session(restored.snapshot());
         sessions.put(id, session);
         if (restored.changed()) persist(session);
@@ -314,9 +348,15 @@ public final class DefaultSessionService implements SessionService {
     }
     private void persist(Session session) {
         session.unsaved = true;
-        repository.save(session.publish());
+        try {
+            repository.save(session.publish());
+        } catch (RuntimeException e) {
+            log.error("Checkpoint save failed session_id={} exception={}", session.id, com.demo.logging.LogData.exception(e));
+            throw e;
+        }
         session.unsaved = false;
         session.publish();
+        log.debug("Checkpoint saved session_id={}", session.id);
     }
     private Instant now(Session session) {
         Instant now = clock.instant();

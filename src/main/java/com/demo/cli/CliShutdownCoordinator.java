@@ -34,6 +34,10 @@ public final class CliShutdownCoordinator {
             }
             return true;
         } catch (RuntimeException e) {
+            if (!(e instanceof com.demo.session.SessionException)
+                    && !(e instanceof com.demo.session.storage.SessionStorageException))
+                com.demo.logging.Logging.logger(CliShutdownCoordinator.class).error("CLI shutdown failed exception={}",
+                        com.demo.logging.LogData.exception(e));
             renderer.failure(e);
             renderer.error("尚未完成保存或资源释放；可查看状态并重试 /exit。");
             return false;

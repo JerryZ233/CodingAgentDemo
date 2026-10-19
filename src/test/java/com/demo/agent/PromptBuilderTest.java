@@ -20,6 +20,7 @@ class PromptBuilderTest {
 
         assertEquals(PromptTemplate.DEFAULT_VERSION, builder.getTemplateVersion());
         assertTrue(builder.buildSystemPrompt().contains("tool calling mechanism provided by the API"));
+        assertTrue(builder.buildSystemPrompt().contains("instead of dumping raw tool payloads"));
     }
 
     @Test

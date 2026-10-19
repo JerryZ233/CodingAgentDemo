@@ -19,6 +19,7 @@ Thumbs.db
 
 # Logs
 *.log
+*.log.gz
 
 # Local secrets
 config.local.yaml

@@ -16,6 +16,8 @@ class CliCommandParserTest {
         assertEquals(new CliCommand.NewSession("G:/My Project"), parser.parse("/new G:/My Project"));
         String id = java.util.UUID.randomUUID().toString();
         assertEquals(new CliCommand.Resume(id), parser.parse("/resume " + id));
+        assertEquals(new CliCommand.Resume("2"), parser.parse("/resume 2"));
+        assertEquals(new CliCommand.RetrySave("2"), parser.parse("/retry-save 2"));
         assertEquals(new CliCommand.RetrySave(null), parser.parse("/retry-save"));
         assertInstanceOf(CliCommand.Exit.class, parser.parse("/quit"));
     }

@@ -22,7 +22,7 @@
 | Gradle | 使用仓库内 Wrapper，版本为 8.10.2，无需单独安装 |
 | 模型服务 | 支持 Chat Completions 和函数工具调用；未配置 API Key 时使用 Dummy 模式 |
 
-首次构建需要访问依赖仓库。主要依赖包括 OpenAI Java SDK 4.81.0、JLine 3.30.6、Gson 2.10.1、SnakeYAML 2.2 和 JUnit 5.10.0。
+首次构建需要访问依赖仓库。主要依赖包括 Log4j 2.26.1、OpenAI Java SDK 4.81.0、JLine 3.30.6、Gson 2.10.1、SnakeYAML 2.2 和 JUnit 5.10.0。
 
 ## 快速开始
 
@@ -46,7 +46,7 @@ export LLM_API_KEY="你的 API Key"
 
 仓库中的 `config.yaml` 当前配置为智谱兼容接口与 `glm-4.7-flash` 模型。API Key 必须与所选服务匹配；切换服务时，同时调整 `LLM_API_URL` 和 `LLM_MODEL`，或修改配置文件。
 
-未配置 API Key 时可以直接启动程序体验会话与命令。此时默认 Dummy 客户端只返回模拟文本，不会真正分析代码或执行文件修改；其“任务已完成”回复不代表实际完成了任务。
+未配置 API Key 时可以直接启动程序体验会话与命令。此时默认 Dummy 客户端只返回模拟文本，不会真正分析代码或执行文件修改；其默认中文回复会明确说明没有实际执行任务。
 
 ### 2. 构建启动器
 
@@ -84,7 +84,7 @@ Gradle 已转发标准输入，但通过管道或某些 IDE 启动时，终端�
 
 ```text
 默认工作目录：G:\projects\example
-输入目录或按 Enter 使用默认值；/sessions 查看历史，/resume <id> 恢复，/help 查看帮助。
+输入目录或按回车使用默认值；/sessions 查看历史，/resume <序号> 恢复，/help 查看帮助。
 目录 >
 ```
 
@@ -122,7 +122,7 @@ agent > /exit
 # 指定工作目录，进入持续对话
 .\build\install\CodingAgentDemo\bin\CodingAgentDemo.bat --workspace "G:/projects/my project"
 
-# 恢复已有会话：将占位内容替换为 /sessions 列出的完整 UUID
+# 兼容方式：使用已知的完整 UUID 恢复会话；交互界面推荐 /sessions 后 /resume <序号>
 .\build\install\CodingAgentDemo\bin\CodingAgentDemo.bat --session "会话的完整UUID"
 
 # 使用独立的会话存储目录
@@ -152,13 +152,15 @@ agent > /exit
 | --- | --- |
 | `/help` | 显示帮助 |
 | `/new [目录]` | 创建并切换会话；省略目录时采用配置默认目录 |
-| `/sessions` | 列出会话 ID、标题、目录、更新时间、最近状态和未保存标记，同时报告无法读取的文件 |
-| `/resume <完整UUID>` | 恢复并切换会话；失败时保留当前选择 |
-| `/history` | 展示当前会话的完整消息、工具调用 ID、参数及结果 |
-| `/status` | 展示当前会话、工作目录、运行 ID、实时状态及未保存标记 |
+| `/sessions` | 列出会话序号、标题、目录、本地更新时间、中文状态和未保存标记 |
+| `/resume <序号>` | 恢复并切换会话；先用 `/sessions` 列出，失败时保留当前选择 |
+| `/history` | 以“用户”“助手”展示对话正文，隐藏工具原始数据及已知系统诊断 |
+| `/status` | 展示会话标题、模型、工作目录、中文状态及保存情况 |
 | `/cancel` | 请求取消当前任务 |
-| `/retry-save [完整UUID]` | 重试保存指定会话；省略 ID 时保存当前会话，不继续原任务 |
+| `/retry-save [序号]` | 重试保存指定会话；省略序号保存当前会话，不继续原任务 |
 | `/exit`、`/quit` | 取消活动任务并关闭服务，关闭成功后退出 |
+
+会话序号从 1 开始，仅在再次执行 `/sessions` 时刷新；新建会话或任务更新不会改变上次列表的序号。序号仅在当前程序中有效，不写入会话文件。`/resume`、`/retry-save` 继续兼容完整 UUID 参数，终端不会自动显示 UUID。
 
 命令名不区分大小写，参数保留大小写；含空格的目录可以整体输入，也可以加成对的外层引号。
 
@@ -168,7 +170,7 @@ agent > /exit
 
 一个服务同时只运行一轮任务，不排队。运行期间可以查看帮助、会话列表、历史和状态，也可以取消或退出；新任务、新建或切换会话、重试保存均会被拒绝。
 
-进度每 100ms 增量读取一次。模型回答只展示一次；工具结果默认最多展示 2,000 个 Unicode 码点，完整内容可通过 `/history` 查看。达到迭代上限或模型返回错误时，本轮结束，会话继续保留。
+进度每 100ms 增量读取一次。终端显示请求模型、重试、文件操作等中文提示，保留模型的中间自然语言说明和最终回答，每条仅展示一次。原始工具参数、结果、迭代次数和模型错误字段写入日志，终端不展示。达到处理上限或模型返回错误时，本轮结束，会话继续保留。
 
 完整 JLine 模式下：
 
@@ -241,9 +243,39 @@ llm:
 
 错误字段分为 `[server]` 与 `[client]`：前者仅包含实际收到的 `http_status`、原始 `code/type/status/param`、请求 ID、等待字段；后者包含来源、尝试次数、状态和等待时长。不生成原因解读、翻译或处理建议。字段值采用 JSON 字面量，区分数字码与字符串码，缺失字段省略。SDK 读取错误响应时最多保留 64 KiB 的原始 JSON 副本，用于保留异常对象会丢失的外层字段；超过上限或非 JSON 正文时回退到 SDK 异常提供的字段。该副本不进入进度事件或会话文件。
 
-`error_details: true` 时额外展示原始 `message` 和允许的嵌套细节（如 `error_code/reason/domain/@type/retryDelay/quota_metric/quota_id/limit`）；默认关闭。展示值会替换已配置的 API Key、Bearer 凭据及常见敏感键值为 `[redacted]`，转义控制字符，每个字符串最多 1000 个 Unicode 码点后附 `[truncated]`；省略字段标记为 `fields_omitted: true`。不打印完整响应头、Cookie、请求正文、堆栈或 HTML/非 JSON 正文。脱敏不能保证消除 message 中所有业务敏感信息。中间错误仅进入进度事件，最终诊断按相同展示策略保存，历史会话文件格式不变。
+`error_details: true` 时在日志诊断及原有持久化诊断中额外保留原始 `message` 和允许的嵌套细节（如 `error_code/reason/domain/@type/retryDelay/quota_metric/quota_id/limit`）；默认关闭。展示值会替换已配置的 API Key、Bearer 凭据及常见敏感键值为 `[redacted]`，转义控制字符，每个字符串最多 1000 个 Unicode 码点后附 `[truncated]`；省略字段标记为 `fields_omitted: true`。模型错误诊断不包含完整响应头、Cookie、请求正文、堆栈或 HTML/非 JSON 正文；未预期异常的脱敏堆栈仅写入文件日志。脱敏不能保证消除 message 中所有业务敏感信息。中间错误进入进度事件和文件日志，最终诊断按原有策略保存，历史会话文件格式不变。终端仅展示中文重试和失败提示；`/history` 不展示这些系统诊断。
 
 Claude 仅作为后续适配参考，当前没有 `anthropic` 配置值或原生 Messages 客户端：临时 429、500、529 可以重试；`error.details.error_code=enforced_spend_limit_reached` 不应重试，不能仅凭缺少 `Retry-After` 判定。[错误说明](https://platform.claude.com/docs/en/api/errors)、[额度字段](https://platform.claude.com/docs/en/api/rate-limits)
+
+## 日志与终端输出
+
+日志使用 Log4j 2，默认写入用户主目录下的 `.coding-agent/logs/agent-<启动时间>-<进程ID>.log`，不随会话工作目录切换。终端不接收日志框架输出；`--help` 不初始化日志、模型或会话存储。
+
+| 设置 | 默认值 | 环境变量 | JVM 属性 |
+| --- | --- | --- | --- |
+| 日志目录 | `${user.home}/.coding-agent/logs` | `CODING_AGENT_LOG_DIR` | `coding.agent.log.dir` |
+| 应用等级 | `DEBUG` | `CODING_AGENT_LOG_LEVEL` | `coding.agent.log.level` |
+
+优先级为非空 JVM 属性 → 非空环境变量 → 默认值。日志配置独立于 YAML，在读取模型配置前生效。等级可设为 `DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`；未识别值采用 `DEBUG`。第三方依赖默认 `WARN`，不启用 HTTP 正文调试。
+
+```powershell
+$env:CODING_AGENT_LOG_DIR = "G:/agent-logs"
+$env:CODING_AGENT_LOG_LEVEL = "INFO"
+.\build\install\CodingAgentDemo\bin\CodingAgentDemo.bat
+```
+
+每条日志包含带时区时间、等级、线程、记录来源，以及适用的会话 ID、运行 ID、迭代和工具调用 ID。程序描述及字段名为英文；用户输入、模型回复、工具结果和路径保留 Unicode 原文，不进行翻译。原始正文经过敏感信息脱敏和控制字符转义，使用带引号的数据字段保存，不主动截断。
+
+| 等级 | 主要内容 |
+| --- | --- |
+| `DEBUG` | 迭代、请求摘要、模型回复、工具参数和结果、检查点 |
+| `INFO` | 启动、模型选择、会话创建与恢复、任务生命周期、取消与关闭 |
+| `WARN` | 请求重试、工具失败、处理上限、中断恢复、终端降级、部分历史加载失败 |
+| `ERROR` | 请求最终失败、保存与资源清理失败、启动和未预期异常 |
+
+单文件达到 10 MiB 后压缩轮转，每次启动最多保留 10 份归档；轮转时清理本应用超过 14 天的归档。不同进程使用独立文件。默认 DEBUG 日志可能包含用户内容和代码；脱敏覆盖配置密钥、Bearer 凭据和常见敏感键，不能识别所有业务敏感信息。
+
+日志无法初始化时以中文提示并返回退出码 1。运行中写入失败时只提示一次，任务及会话保存继续。改变日志等级不会改变终端展示、重试行为或会话 JSON 格式。
 
 ## 工具与执行边界
 

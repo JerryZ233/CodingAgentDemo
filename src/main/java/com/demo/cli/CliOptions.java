@@ -31,7 +31,8 @@ public record CliOptions(Path workspace, String sessionId, Path sessionDirectory
                             case "--session" -> {
                                 if (session != null) throw new IllegalArgumentException("重复参数：" + arg);
                                 session = args[i];
-                                SessionSnapshot.requireId(session);
+                                try { SessionSnapshot.requireId(session); }
+                                catch (IllegalArgumentException e) { throw new IllegalArgumentException("会话参数无效，请使用有效的会话标识。"); }
                             }
                             default -> {
                                 if (directory != null) throw new IllegalArgumentException("重复参数：" + arg);

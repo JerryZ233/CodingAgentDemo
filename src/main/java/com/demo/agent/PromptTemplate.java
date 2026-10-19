@@ -8,7 +8,7 @@ import java.util.Objects;
 public final class PromptTemplate {
 
     static final String TOOLS_PLACEHOLDER = "{TOOLS}";
-    public static final String DEFAULT_VERSION = "coding-agent-default-v2";
+    public static final String DEFAULT_VERSION = "coding-agent-default-v3";
     public static final String CUSTOM_VERSION = "custom";
 
     private final String version;
@@ -74,9 +74,10 @@ public final class PromptTemplate {
                "  any action that requires tool use, call the appropriate tool\n" +
                "- Always check tool results before providing final response\n\n" +
                "## Response Guidelines\n" +
+               "- Preserve code, identifiers, and quoted source text; do not expose internal session IDs, run IDs, or iteration counters\n" +
                "- Be concise but informative\n" +
                "- Explain what you're going to do before doing it\n" +
-               "- Show the user the results of tool executions\n" +
+               "- Summarize meaningful results in natural language instead of dumping raw tool payloads\n" +
                "- If something goes wrong, explain the error and try to fix it\n\n" +
                "## Constraints\n" +
                "- All file operations must be within the designated workspace directory\n" +

@@ -68,7 +68,12 @@ public final class RunEventPump implements AutoCloseable {
     }
     private void safePoll() {
         try { poll(); }
-        catch (RuntimeException e) { renderer.failure(e); }
+        catch (RuntimeException e) {
+            if (!(e instanceof SessionException) && !(e instanceof com.demo.session.storage.SessionStorageException))
+                com.demo.logging.Logging.logger(RunEventPump.class).error("CLI event polling failed exception={}",
+                        com.demo.logging.LogData.exception(e));
+            renderer.failure(e);
+        }
     }
     synchronized void closeService() {
         poll();

@@ -15,13 +15,13 @@ public final class CliCommandParser {
         String argument = input.substring(split).strip();
         return switch (name) {
             case "/new" -> new CliCommand.NewSession(argument.isEmpty() ? null : directory(argument));
-            case "/resume" -> { SessionSnapshot.requireId(argument); yield new CliCommand.Resume(argument); }
+            case "/resume" -> { requireReference(argument); yield new CliCommand.Resume(argument); }
             case "/retry-save" -> {
-                if (!argument.isEmpty()) SessionSnapshot.requireId(argument);
+                if (!argument.isEmpty()) requireReference(argument);
                 yield new CliCommand.RetrySave(argument.isEmpty() ? null : argument);
             }
             case "/sessions", "/history", "/status", "/cancel", "/help", "/exit", "/quit" -> {
-                if (!argument.isEmpty()) throw new IllegalArgumentException(name + " 不接受参数");
+                if (!argument.isEmpty()) throw new CliInputException(name + " 不接受参数");
                 yield switch (name) {
                     case "/sessions" -> new CliCommand.Sessions();
                     case "/history" -> new CliCommand.History();
@@ -31,8 +31,14 @@ public final class CliCommandParser {
                     default -> new CliCommand.Exit();
                 };
             }
-            default -> throw new IllegalArgumentException("未知命令：" + name + "；使用 /help，或用 // 提交以 / 开头的任务");
+            default -> throw new CliInputException("未知命令；使用 /help，或用 // 提交以 / 开头的任务。");
         };
+    }
+
+    private static void requireReference(String reference) {
+        if (reference.matches("[0-9]+")) return;
+        try { SessionSnapshot.requireId(reference); }
+        catch (IllegalArgumentException e) { throw new CliInputException("请输入会话序号；先使用 /sessions 查看可选会话。"); }
     }
 
     static String directory(String text) {
@@ -40,10 +46,10 @@ public final class CliCommandParser {
         if (value.startsWith("\"") || value.startsWith("'")) {
             char quote = value.charAt(0);
             if (value.length() < 2 || value.charAt(value.length() - 1) != quote)
-                throw new IllegalArgumentException("目录引号未闭合");
+                throw new CliInputException("目录引号未闭合");
             value = value.substring(1, value.length() - 1);
         }
-        if (value.isBlank()) throw new IllegalArgumentException("目录不能为空");
+        if (value.isBlank()) throw new CliInputException("目录不能为空");
         return value;
     }
 }

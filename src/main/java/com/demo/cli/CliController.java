@@ -11,6 +11,8 @@ public final class CliController {
     private final RunEventPump pump;
     private final CliShutdownCoordinator shutdown;
     private final CliCommandParser parser = new CliCommandParser();
+    private final SessionSelection selection = new SessionSelection();
+    private final org.apache.logging.log4j.Logger log = com.demo.logging.Logging.logger(CliController.class);
     private Phase phase = Phase.SELECTING_WORKSPACE;
     private String sessionId;
     public CliController(SessionService service, Path defaultWorkspace, CliRenderer renderer,
@@ -43,10 +45,20 @@ public final class CliController {
                 return;
             }
             execute(parser.parse(text));
-        } catch (IllegalArgumentException e) { renderer.error(e.getMessage()); }
-        catch (RuntimeException e) { renderer.failure(e); }
+        } catch (java.nio.file.InvalidPathException e) { renderer.failure(e); }
+        catch (CliInputException e) { renderer.error(e.getMessage()); }
+        catch (IllegalArgumentException e) {
+            log.warn("CLI input rejected diagnostic={}", com.demo.logging.LogData.quote(e.getMessage()));
+            renderer.error("输入无效，请使用 /help 查看用法。");
+        }
+        catch (RuntimeException e) {
+            if (!(e instanceof SessionException) && !(e instanceof com.demo.session.storage.SessionStorageException))
+                log.error("CLI operation failed exception={}", com.demo.logging.LogData.exception(e));
+            renderer.failure(e);
+        }
     }
     public void execute(CliCommand command) {
+        log.debug("CLI command received type={}", command.getClass().getSimpleName());
         RunHandle active = pump.active();
         if (active != null && (command instanceof CliCommand.Task || command instanceof CliCommand.NewSession
                 || command instanceof CliCommand.Resume || command instanceof CliCommand.RetrySave)) {
@@ -57,12 +69,14 @@ public final class CliController {
         else if (command instanceof CliCommand.Exit) {
             if (shutdown.close()) phase = Phase.EXITING;
         } else if (command instanceof CliCommand.Sessions) {
-            renderer.catalog(service.listSessions());
+            SessionCatalog catalog = service.listSessions();
+            selection.refresh(catalog);
+            renderer.catalog(catalog);
         } else if (command instanceof CliCommand.NewSession create) {
             select(service.createSession(create.directory() == null ? defaultWorkspace : Path.of(create.directory())));
-        } else if (command instanceof CliCommand.Resume resume) select(service.getSession(resume.id()));
+        } else if (command instanceof CliCommand.Resume resume) select(service.getSession(selection.resolve(resume.id())));
         else if (command instanceof CliCommand.RetrySave save) {
-            String id = save.id() == null ? requireSession() : save.id();
+            String id = save.id() == null ? requireSession() : selection.resolve(save.id());
             renderer.session(service.retrySave(id));
         } else if (command instanceof CliCommand.Cancel) cancel();
         else if (command instanceof CliCommand.History) renderer.history(service.getSession(requireSession()));
@@ -70,7 +84,7 @@ public final class CliController {
         else if (command instanceof CliCommand.Task task) pump.attach(service.submitTurn(requireSession(), task.text()));
     }
     private String requireSession() {
-        if (sessionId == null) throw new IllegalArgumentException("请先选择工作目录或使用 /resume 恢复会话");
+        if (sessionId == null) throw new CliInputException("请先选择工作目录或使用 /resume 恢复会话");
         return sessionId;
     }
     private boolean isSelectionCommand(String text) {

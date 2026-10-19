@@ -24,17 +24,30 @@ public final class CliApplication {
     public int run(String[] args) {
         CliOptions options;
         try { options = CliOptions.parse(args); }
+        catch (java.nio.file.InvalidPathException e) {
+            System.err.println("参数错误：目录格式无效，请重新输入。");
+            return 2;
+        }
         catch (IllegalArgumentException e) {
             System.err.println("参数错误：" + TerminalIO.literal(e.getMessage()));
             return 2;
         }
         if (options.help()) { System.out.println(CliRenderer.usage()); return 0; }
+        try { com.demo.logging.Logging.initialize(); }
+        catch (RuntimeException e) {
+            System.err.println("无法创建日志文件，请检查日志目录权限。");
+            return 1;
+        }
+        var log = com.demo.logging.Logging.logger(CliApplication.class);
+        log.info("Application started mode={}", options.mode());
         TerminalIO terminal = null;
         CliShutdownCoordinator shutdown = null;
         try {
             Config config = configs.get();
+            com.demo.logging.LogData.registerSecret(config.getApiKey());
             terminal = terminals.get();
             CliRenderer renderer = new CliRenderer(terminal);
+            com.demo.logging.Logging.onFailure(() -> renderer.error("日志写入失败，请检查日志目录和磁盘空间；任务将继续执行。"));
             renderer.welcome(config);
             SessionService service = services.create(config, options);
             RunEventPump pump = new RunEventPump(service, renderer);
@@ -71,13 +84,22 @@ public final class CliApplication {
             if (!shutdown.close()) code = 1;
             return code;
         } catch (RuntimeException | java.io.IOError e) {
+            // Service/storage failures have already been logged at their origin.
+            if (!(e instanceof SessionException) && !(e instanceof com.demo.session.storage.SessionStorageException))
+                log.error("Application failed exception={}", com.demo.logging.LogData.exception(e));
             if (terminal != null) new CliRenderer(terminal).failure(e);
-            else System.err.println("启动失败：" + e.getClass().getSimpleName());
+            else System.err.println("启动失败，详细原因已记录到日志。");
             if (shutdown != null) shutdown.close();
-            else if (terminal != null) terminal.close();
+            else if (terminal != null) {
+                try { terminal.close(); }
+                catch (RuntimeException close) {
+                    log.error("Terminal close failed exception={}", com.demo.logging.LogData.exception(close));
+                }
+            }
             return 1;
         } finally {
             if (shutdown != null) shutdown.removeHook();
+            com.demo.logging.Logging.onFailure(null);
         }
     }
 }

@@ -131,8 +131,8 @@ class CliSessionIntegrationTest {
         var summary = new JsonSessionRepository(temp.resolve("store")).list().sessions().get(0);
         assertEquals(SessionRun.Status.CANCELLED, summary.lastRunStatus());
         String rendered = output.toString();
-        assertTrue(rendered.contains("CANCELLED"));
-        assertTrue(rendered.indexOf("CANCELLED") < rendered.indexOf("已关闭会话服务"));
+        assertTrue(rendered.contains("任务已取消"));
+        assertTrue(rendered.indexOf("任务已取消") < rendered.indexOf("已关闭会话服务"));
     }
     @Test void singleTaskSignalCancelsThroughHandleAndReturns130() {
         AtomicReference<Runnable> signal = new AtomicReference<>();
@@ -149,7 +149,7 @@ class CliSessionIntegrationTest {
             signal.get().run(); return new LLMClient.LLMResponse("late", null);
         }, new JsonSessionRepository(temp.resolve("store")), Clock.systemUTC()), () -> terminal, false);
         assertEquals(130, app.run(new String[]{"--workspace", temp.toString(), "task"}));
-        assertTrue(output.toString().contains("CANCELLED"));
+        assertTrue(output.toString().contains("任务已取消"));
         assertNull(signal.get());
     }
 }

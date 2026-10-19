@@ -37,6 +37,7 @@ final class ActiveRun implements RunHandle {
         // The token flag and cancellation event are linearized against step admission.
         cancellation.cancel(() -> {
             state = State.CANCELLING;
+            com.demo.logging.Logging.logger(ActiveRun.class).info("Cancellation requested session_id={} run_id={}", sessionId, id);
             events.append(SessionEvent.Type.CANCEL_REQUESTED, new SessionEvent.Progress(0));
         });
         return CancelResult.REQUESTED;

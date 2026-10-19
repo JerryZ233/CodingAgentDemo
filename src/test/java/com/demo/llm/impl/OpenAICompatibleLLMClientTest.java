@@ -242,6 +242,8 @@ class OpenAICompatibleLLMClientTest {
     }
 
     @Test void retriesTransientErrorsWithIdenticalRequestsAndBoundedAttempts() throws Exception {
+        var logFile = com.demo.logging.Logging.file();
+        int logStart = java.nio.file.Files.readString(logFile).length();
         List<Long> waits = new ArrayList<>();
         List<LLMFailure> progress = new ArrayList<>();
         for (int status : new int[] {429, 500, 503})
@@ -264,9 +266,17 @@ class OpenAICompatibleLLMClientTest {
             assertEquals(6, result.getFailure().orElseThrow().attempt());
         }
         assertEquals(10, requestCount.get());
+        String logged = java.nio.file.Files.readString(logFile).substring(logStart);
+        assertEquals(8, logged.lines().filter(line -> line.contains("WARN") && line.contains("Model request retry scheduled")).count());
+        assertEquals(1, logged.lines().filter(line -> line.contains("ERROR") && line.contains("Model request failed")).count());
+        assertTrue(logged.contains("retry_in_ms=2000"));
+        assertTrue(logged.contains("RETRIES_EXHAUSTED"));
+        assertFalse(logged.contains("Bearer test-key"));
     }
 
-    @Test void honorsRetryAfterAndStopsBeforeExcessiveServerDelay() {
+    @Test void honorsRetryAfterAndStopsBeforeExcessiveServerDelay() throws Exception {
+        var logFile = com.demo.logging.Logging.file();
+        int logStart = java.nio.file.Files.readString(logFile).length();
         List<Long> waits = new ArrayList<>();
         replies.add(new Reply(429, "{}", 0, Map.of("Retry-After", "12", "X-Request-Id", "req_123")));
         replies.add(ok("{\"role\":\"assistant\",\"content\":\"done\"}"));
@@ -281,6 +291,9 @@ class OpenAICompatibleLLMClientTest {
             assertTrue(response.getText().contains("121"));
         }
         assertEquals(3, requestCount.get());
+        String logged = java.nio.file.Files.readString(logFile).substring(logStart);
+        assertTrue(logged.contains("retry_in_ms=12000"));
+        assertTrue(logged.contains("SERVER_WAIT_LIMIT"));
     }
 
     @Test void cancellationDuringBackoffDoesNotSendAnotherRequest() throws Exception {

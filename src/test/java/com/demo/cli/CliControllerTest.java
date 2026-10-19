@@ -18,6 +18,7 @@ class CliControllerTest {
             assertEquals(CliController.Phase.SELECTING_WORKSPACE, h.controller.phase());
             h.line("");
             String original = h.controller.sessionId();
+            assertEquals("agent > ", h.controller.prompt());
             h.line("/resume " + java.util.UUID.randomUUID());
             assertEquals(original, h.controller.sessionId());
             h.line("/new");
@@ -25,7 +26,28 @@ class CliControllerTest {
             h.line("/resume " + original);
             assertEquals(original, h.controller.sessionId());
             h.line("/history"); h.line("/sessions"); h.line("/status");
-            assertTrue(h.text().contains(original));
+            assertFalse(h.text().contains(original));
+        }
+    }
+    @Test void sessionNumbersRemainStableUntilTheCatalogIsRefreshed() {
+        try (var h = new CliTestSupport.Harness(temp, CliTestSupport.ANSWER)) {
+            h.line("/resume 1");
+            assertTrue(h.text().contains("请先使用 /sessions"));
+            h.line("");
+            String original = h.controller.sessionId();
+            h.line("/sessions");
+            h.line("/new");
+            String newer = h.controller.sessionId();
+            h.line("/resume 1");
+            assertEquals(original, h.controller.sessionId());
+            h.line("/retry-save 1");
+            h.line("/resume 99999999999999999");
+            assertEquals(original, h.controller.sessionId());
+            h.line("/sessions");
+            h.line("/resume 1");
+            assertEquals(newer, h.controller.sessionId());
+            assertFalse(h.text().contains(original));
+            assertFalse(h.text().contains(newer));
         }
     }
     @Test void inputStaysAvailableWhileBusyAndCancellationAllowsAnotherTurn() {

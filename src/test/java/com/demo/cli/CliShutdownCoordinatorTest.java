@@ -62,6 +62,6 @@ class CliShutdownCoordinatorTest {
         pump.attach(handle);
         var shutdown = new CliShutdownCoordinator(service, pump, terminal, renderer);
         assertTrue(shutdown.close());
-        assertTrue(output.toString().contains("CANCELLED"));
+        assertTrue(output.toString().contains("任务已取消"));
     }
 }

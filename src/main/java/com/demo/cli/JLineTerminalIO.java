@@ -33,6 +33,7 @@ public final class JLineTerminalIO implements TerminalIO {
         } catch (IOException | IllegalStateException e) {
             // No full terminal is available; use the process streams without ANSI editing.
         }
+        com.demo.logging.Logging.logger(JLineTerminalIO.class).warn("Full terminal unavailable; using plain line mode");
         return new PlainTerminalIO(new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8),
                 new java.io.PrintWriter(System.out, true), new java.io.PrintWriter(System.err, true));
     }

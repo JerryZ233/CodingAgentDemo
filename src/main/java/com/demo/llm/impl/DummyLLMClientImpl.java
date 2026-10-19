@@ -62,7 +62,7 @@ public class DummyLLMClientImpl implements LLMClient {
         }
         
         String response = fixedResponse != null ? fixedResponse : 
-            "I have completed your task: " + lastMessage;
+            "当前为模拟模式，未调用真实模型或执行文件操作。收到的任务：" + lastMessage;
         
         return new LLMResponse(response, null);
     }

@@ -26,6 +26,7 @@ import java.util.concurrent.CompletionException;
 
 /** OpenAI-compatible Chat Completions client; tool execution stays in AgentLoop. */
 public class OpenAICompatibleLLMClient implements LLMClient {
+    private final org.apache.logging.log4j.Logger log = com.demo.logging.Logging.logger(OpenAICompatibleLLMClient.class);
     private final OpenAIClient client;
     private final HttpClient transport;
     private final String model;
@@ -61,6 +62,7 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     OpenAICompatibleLLMClient(String apiUrl, String apiKey, String model, int maxTokens, double temperature,
             Duration timeout, LLMProvider provider, RetryPolicy retryPolicy, boolean details,
             Clock clock, DoubleSupplier random, RetryWaiter waiter) {
+        com.demo.logging.LogData.registerSecret(apiKey);
         String baseUrl = toBaseUrl(apiUrl);
         this.transport = new com.openai.client.okhttp.OkHttpClient.Builder().timeout(timeout).build();
         this.client = new OpenAIClientImpl(ClientOptions.builder().httpClient(transport)
@@ -102,6 +104,9 @@ public class OpenAICompatibleLLMClient implements LLMClient {
         int maxAttempts = retryPolicy.maxRetries() + 1;
         for (int attempt = 1; ; attempt++) {
             checkActive(token);
+            long started = System.nanoTime();
+            log.debug("Model request attempt started attempt={} max_attempts={} model={} message_count={}",
+                    attempt, maxAttempts, com.demo.logging.LogData.quote(model), messages.size());
             LLMError error;
             var scopedTransport = new CancellationAwareHttpClient(transport, token);
             try {
@@ -111,7 +116,11 @@ public class OpenAICompatibleLLMClient implements LLMClient {
                     var completion = response.get();
                     checkActive(token);
                     var mapped = responseMapper.map(completion);
-                    if (!mapped.isError()) return mapped;
+                    if (!mapped.isError()) {
+                        log.debug("Model request attempt completed attempt={} elapsed_ms={}", attempt,
+                                (System.nanoTime() - started) / 1_000_000);
+                        return mapped;
+                    }
                     error = errors.local(new IllegalStateException(), LLMError.Source.RESPONSE);
                 } catch (InterruptedException interrupted) {
                     scopedTransport.cancel();
@@ -143,6 +152,9 @@ public class OpenAICompatibleLLMClient implements LLMClient {
             if (attempt >= maxAttempts) return failure(error, attempt, LLMFailure.State.RETRIES_EXHAUSTED);
             long delay = Math.max(error.serverWaitMillis(), retryPolicy.delayMillis(attempt - 1, random.getAsDouble()));
             var progress = new LLMFailure(error, attempt, maxAttempts, LLMFailure.State.RETRY_SCHEDULED, delay);
+            log.warn("Model request retry scheduled attempt={} max_attempts={} retry_in_ms={} elapsed_ms={} diagnostic={}",
+                    attempt, maxAttempts, delay, (System.nanoTime() - started) / 1_000_000,
+                    com.demo.logging.LogData.quote(com.demo.llm.LLMErrorFormatter.format(progress)));
             token.runIfActive(() -> onRetry.accept(progress));
             checkActive(token);
             waiter.await(delay, token);
@@ -151,7 +163,10 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     }
 
     private LLMResponse failure(LLMError error, int attempt, LLMFailure.State state) {
-        return LLMResponse.error(new LLMFailure(error, attempt, retryPolicy.maxRetries() + 1, state, null));
+        var failure = new LLMFailure(error, attempt, retryPolicy.maxRetries() + 1, state, null);
+        log.error("Model request failed diagnostic={}",
+                com.demo.logging.LogData.quote(com.demo.llm.LLMErrorFormatter.format(failure)));
+        return LLMResponse.error(failure);
     }
 
     private static void checkActive(CancellationToken token) {
