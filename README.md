@@ -44,7 +44,7 @@ $env:LLM_API_KEY = "你的 API Key"
 export LLM_API_KEY="你的 API Key"
 ```
 
-仓库中的 `config.yaml` 当前配置为智谱兼容接口与 `glm-4.7-flash` 模型。API Key 必须与所选服务匹配；切换服务时，同时调整 `LLM_API_URL` 和 `LLM_MODEL`，或修改配置文件。
+仓库中的 `config.yaml` 当前配置为 DeepSeek 兼容接口与 `deepseek-flash` 模型，`provider` 显式设为 `deepseek`。API Key 必须与所选服务匹配；切换服务时，同时调整接口地址、模型和 provider 配置（或对应环境变量）。本地密钥继续保存在被 Git 忽略的 `config.local.yaml` 或环境变量中。
 
 未配置 API Key 时可以直接启动程序体验会话与命令。此时默认 Dummy 客户端只返回模拟文本，不会真正分析代码或执行文件修改；其默认中文回复会明确说明没有实际执行任务。
 
@@ -190,9 +190,9 @@ agent > /exit
 
 | YAML 配置项 | 环境变量 | 当前值 |
 | --- | --- | --- |
-| `llm.api_url` | `LLM_API_URL` | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
-| `llm.model` | `LLM_MODEL` | `glm-4.7-flash` |
-| `llm.provider` | `LLM_PROVIDER` | `auto` |
+| `llm.api_url` | `LLM_API_URL` | `https://api.deepseek.com/chat/completions` |
+| `llm.model` | `LLM_MODEL` | `deepseek-flash` |
+| `llm.provider` | `LLM_PROVIDER` | `deepseek` |
 | `llm.max_retries` | `LLM_MAX_RETRIES` | `10`（不含首次请求） |
 | `llm.retry_initial_delay_ms` | `LLM_RETRY_INITIAL_DELAY_MS` | `2000` |
 | `llm.retry_max_delay_ms` | `LLM_RETRY_MAX_DELAY_MS` | `30000` |

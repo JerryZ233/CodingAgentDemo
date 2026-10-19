@@ -4,7 +4,7 @@
 llm:
   # Error semantics: auto, openai, zhipu, deepseek, dashscope, gemini, generic
   # auto uses exact registered endpoint hostnames, never the model name
-  provider: "auto"
+  provider: "deepseek"
   # Retries per model request, excluding the first attempt (0 disables)
   max_retries: 10
   retry_initial_delay_ms: 2000
@@ -13,11 +13,11 @@ llm:
   error_details: false
   # API endpoint (OpenAI-compatible)
   # Can be overridden by LLM_API_URL environment variable
-  api_url: "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+  api_url: "https://api.deepseek.com/chat/completions"
   
   # Model name
   # Can be overridden by LLM_MODEL environment variable
-  model: "glm-4.7-flash"
+  model: "deepseek-flash"
   
   # API key
   # Can be overridden by LLM_API_KEY environment variable
