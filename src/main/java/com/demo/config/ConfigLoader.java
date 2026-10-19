@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,7 +32,26 @@ public final class ConfigLoader {
 
     static Config load(Path configPath, Map<String, String> environment) {
         Map<String, Object> yamlConfig = loadYamlConfig(configPath);
+        Path basePath = configPath == null ? DEFAULT_CONFIG_PATH : configPath.toAbsolutePath().normalize();
+        Path localPath = basePath.resolveSibling("config.local.yaml");
+        if (!basePath.equals(localPath) && Files.isRegularFile(localPath)) {
+            yamlConfig = merge(yamlConfig, loadYamlConfig(localPath));
+        }
         return from(yamlConfig, environment);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> merge(Map<String, Object> base, Map<String, Object> overrides) {
+        Map<String, Object> result = new HashMap<>(base);
+        overrides.forEach((key, value) -> {
+            Object previous = result.get(key);
+            if (previous instanceof Map && value instanceof Map) {
+                result.put(key, merge((Map<String, Object>) previous, (Map<String, Object>) value));
+            } else {
+                result.put(key, value);
+            }
+        });
+        return result;
     }
 
     static Config from(Map<String, Object> yamlConfig, Map<String, String> environment) {
@@ -46,7 +66,13 @@ public final class ConfigLoader {
             parseDouble("llm.temperature", getEnvOrYaml(env, "LLM_TEMPERATURE", "llm.temperature", String.valueOf(Config.DEFAULT_TEMPERATURE), config)),
             parseInt("agent.max_iterations", getEnvOrYaml(env, "AGENT_MAX_ITERATIONS", "agent.max_iterations", String.valueOf(Config.DEFAULT_MAX_ITERATIONS), config)),
             getEnvOrYaml(env, "WORKSPACE_DIR", "agent.workspace_dir", Config.DEFAULT_WORKSPACE_DIR, config),
-            loadEnabledTools(config)
+            loadEnabledTools(config),
+            getEnvOrYaml(env, "LLM_PROVIDER", "llm.provider", "auto", config),
+            new com.demo.llm.RetryPolicy(
+                parseInt("llm.max_retries", getEnvOrYaml(env, "LLM_MAX_RETRIES", "llm.max_retries", "5", config)),
+                parseInt("llm.retry_initial_delay_ms", getEnvOrYaml(env, "LLM_RETRY_INITIAL_DELAY_MS", "llm.retry_initial_delay_ms", "2000", config)),
+                parseInt("llm.retry_max_delay_ms", getEnvOrYaml(env, "LLM_RETRY_MAX_DELAY_MS", "llm.retry_max_delay_ms", "30000", config))),
+            parseBoolean("llm.error_details", getEnvOrYaml(env, "LLM_ERROR_DETAILS", "llm.error_details", "false", config))
         );
     }
 
@@ -138,6 +164,12 @@ public final class ConfigLoader {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid integer for " + key + ": '" + value + "'", e);
         }
+    }
+
+    private static boolean parseBoolean(String key, String value) {
+        if ("true".equalsIgnoreCase(value)) return true;
+        if ("false".equalsIgnoreCase(value)) return false;
+        throw new IllegalArgumentException("Invalid boolean for " + key);
     }
 
     private static double parseDouble(String key, String value) {

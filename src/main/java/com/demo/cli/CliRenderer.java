@@ -71,6 +71,8 @@ public final class CliRenderer {
             case RUN_STARTED -> "任务已提交，运行 ID：" + event.runId();
             case ITERATION_STARTED -> "第 " + ((SessionEvent.Progress) event.payload()).iteration() + " 次迭代";
             case LLM_REQUEST_STARTED -> "正在请求模型…";
+            case LLM_RETRY -> com.demo.llm.LLMErrorFormatter.format(((SessionEvent.ModelFailure) event.payload()).failure());
+            case LLM_FAILED -> null; // Final persisted diagnostic is rendered once with RUN_FINISHED.
             case ASSISTANT_MESSAGE -> {
                 String answer = ((SessionEvent.AssistantMessage) event.payload()).text();
                 yield answer == null || answer.isEmpty() ? null : answer;

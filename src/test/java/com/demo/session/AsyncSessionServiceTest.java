@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +20,38 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AsyncSessionServiceTest {
     @TempDir Path temp;
+
+    @Test void structuredRetryAndFailureReachSessionEventsAndOnlyFinalDiagnosticIsPersisted() {
+        var error = new com.demo.llm.LLMError(com.demo.llm.LLMError.Source.SERVER, 429,
+                Map.of("error.code", "\"1302\""), true, 0);
+        var retry = new com.demo.llm.LLMFailure(error, 1, 2, com.demo.llm.LLMFailure.State.RETRY_SCHEDULED, 1L);
+        var failed = new com.demo.llm.LLMFailure(error, 2, 2, com.demo.llm.LLMFailure.State.RETRIES_EXHAUSTED, null);
+        LLMClient model = new LLMClient() {
+            public LLMResponse sendMessage(List<Message> messages, String tools) { throw new AssertionError(); }
+            public LLMResponse sendMessage(List<Message> messages, String tools, CancellationToken token,
+                    java.util.function.Consumer<com.demo.llm.LLMFailure> onRetry) {
+                onRetry.accept(retry);
+                return LLMResponse.error(failed);
+            }
+        };
+        String id;
+        try (var service = service(model)) {
+            id = service.createSession(temp).id();
+            var run = service.submitTurn(id, "test");
+            var snapshot = run.completion().toCompletableFuture().join();
+            assertEquals(SessionRun.Status.LLM_ERROR, snapshot.lastRun().status());
+            assertEquals(2, snapshot.messages().size());
+            assertEquals(com.demo.llm.LLMErrorFormatter.format(failed), snapshot.lastRun().message());
+            var events = run.eventsAfter(0);
+            assertEquals(retry, ((SessionEvent.ModelFailure) events.stream().filter(e -> e.type() == SessionEvent.Type.LLM_RETRY)
+                    .findFirst().orElseThrow().payload()).failure());
+            assertEquals(failed, ((SessionEvent.ModelFailure) events.stream().filter(e -> e.type() == SessionEvent.Type.LLM_FAILED)
+                    .findFirst().orElseThrow().payload()).failure());
+        }
+        try (var restored = service(model)) {
+            assertEquals(com.demo.llm.LLMErrorFormatter.format(failed), restored.getSession(id).lastRun().message());
+        }
+    }
 
     @Test void returnsLiveHandleAndEventsThenCancellationLeavesSessionUsable() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);

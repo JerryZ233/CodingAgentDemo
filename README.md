@@ -180,9 +180,9 @@ agent > /exit
 
 ## 配置说明
 
-配置优先级为：**非空环境变量 → YAML 配置 → 内置默认值**。
+配置优先级为：**非空环境变量 → config.local.yaml 本地配置 → YAML 配置 → 内置默认值**。
 
-程序先读取进程启动目录下的 [config.yaml](config.yaml)，找不到时尝试类路径资源，最后使用内置默认值。终端暂不支持指定配置文件路径，也不会在切换会话时重新加载配置。
+程序先读取进程启动目录下的 [config.yaml](config.yaml)，找不到时尝试类路径资源，最后使用内置默认值。随后读取同目录的 `config.local.yaml`，按字段覆盖公共配置；此文件已被 Git 忽略，可用于保存 `llm.api_key`，不会打包到发行文件中。终端暂不支持指定配置文件路径，也不会在切换会话时重新加载配置。
 
 下表中的值是仓库当前 `config.yaml` 的设置：
 
@@ -190,6 +190,11 @@ agent > /exit
 | --- | --- | --- |
 | `llm.api_url` | `LLM_API_URL` | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `llm.model` | `LLM_MODEL` | `glm-4.7-flash` |
+| `llm.provider` | `LLM_PROVIDER` | `auto` |
+| `llm.max_retries` | `LLM_MAX_RETRIES` | `5`（不含首次请求） |
+| `llm.retry_initial_delay_ms` | `LLM_RETRY_INITIAL_DELAY_MS` | `2000` |
+| `llm.retry_max_delay_ms` | `LLM_RETRY_MAX_DELAY_MS` | `30000` |
+| `llm.error_details` | `LLM_ERROR_DETAILS` | `false` |
 | `llm.api_key` | `LLM_API_KEY` | 空，使用 Dummy 模式 |
 | `llm.max_tokens` | `LLM_MAX_TOKENS` | `2048` |
 | `llm.temperature` | `LLM_TEMPERATURE` | `0.7` |
@@ -201,7 +206,44 @@ agent > /exit
 
 模型配置使用本项目的 `LLM_*` 环境变量，不使用 SDK 的 `OPENAI_*` 变量。接口地址接受完整的 `/chat/completions` 地址或服务基础地址，仅允许 HTTP(S)，不接受内嵌凭据、查询参数或片段。
 
-请求通过 SDK 异步发送，使用非流式 Chat Completions；请求超时为 120 秒，SDK 自动重试已关闭。第三方服务是否可用取决于其模型参数及工具调用兼容性。
+请求通过 SDK 异步发送，使用非流式 Chat Completions；每次尝试超时为 120 秒。SDK 自动重试关闭，由项目按以下规则执行有界重试。第三方服务是否可用取决于其模型参数及工具调用兼容性。
+
+### 模型请求的错误与重试
+
+配置示例（也可写入 `config.local.yaml`，环境变量优先）：
+
+```yaml
+llm:
+  provider: auto
+  max_retries: 5
+  retry_initial_delay_ms: 2000
+  retry_max_delay_ms: 30000
+  error_details: false
+```
+
+`provider` 可为 `auto`、`openai`、`zhipu`、`deepseek`、`dashscope`、`gemini`、`generic`。`auto` 仅通过官方端点的确切主机名识别：`api.openai.com`、`open.bigmodel.cn`、`api.deepseek.com`、`dashscope.aliyuncs.com`、`dashscope-intl.aliyuncs.com`、`dashscope-us.aliyuncs.com`、`generativelanguage.googleapis.com`；未知主机使用 `generic`，不根据模型名推断。第三方网关默认按自身兼容接口语义处理，只有明确保留上游错误格式时才显式配置对应 provider。Gemini 仅使用其 OpenAI 兼容端点，不接入原生接口。
+
+默认每次模型调用最多发送 6 次请求，退避基数为 2、4、8、16、30 秒，增加 0–20% 随机延迟，普通退避不超过配置的最大值。`max_retries: 0` 禁用重试。次数必须非负且小于 2147483647，延迟必须为正且最大值不小于初始值。
+
+服务商业务码优先于 HTTP 回退规则；明确不可重试的业务错误不会因 HTTP 429/500 被重试。通用规则为：408、429、500、502、503、504 可重试，其余未识别状态（包括 409、501、505、529）直接返回。连接/读取超时、连接重置、临时连接中断可重试；DNS 名称无法解析、TLS 证书错误、请求构造和响应解析失败不重试。不自动改变模型、参数或上下文。
+
+| 服务商 | 主要规则与官方来源 |
+| --- | --- |
+| 智谱 | `1302`、`1305` 可重试；`1113`、`1308`–`1311`、`1313`–`1321` 以及明确鉴权、参数、权限、内容与上下文错误不重试。[错误码](https://docs.bigmodel.cn/cn/api/api-code) |
+| OpenAI | 请求限流、`slow_down`、`server_is_overloaded` 可重试；`insufficient_quota`、`credit_balance_exhausted`、`organization_spend_limit_exceeded`、`project_spend_limit_exceeded`、`organization_usage_limit_exceeded` 不重试。[错误码](https://developers.openai.com/api/docs/guides/error-codes) |
+| DeepSeek | 429/500/503 可重试，400/401/402/422 直接返回。[错误码](https://api-docs.deepseek.com/quick_start/error_codes/) |
+| 百炼 | 请求频率、突发、并发、TPM/TPS 和服务过载限流可重试，包括相应的 `Throttling.AllocationQuota` / `insufficient_quota`；`AllocationQuota.FreeTierOnly`、`Arrearage`、`CommodityNotPurchased`、`PrepaidBillOverdue` 不重试。官方固定消息 `Free allocated quota exceeded.` 与 `Maximum voice-clone voice limit exceeded.` 优先判为不重试，同名 `insufficient_quota` 不套用 OpenAI 的规则。[错误码](https://help.aliyun.com/zh/model-studio/error-code/) |
+| Gemini | 短期限流和临时服务错误可重试，明确 `quota_exceeded`、每日额度、计费、权限和参数错误不重试。`RESOURCE_EXHAUSTED` 本身不能区分短期限流与日额度耗尽；兼容响应未保留结构化细节时使用通用规则。[重试](https://ai.google.dev/gemini-api/docs/troubleshooting)、[额度](https://ai.google.dev/gemini-api/docs/rate-limits) |
+
+`Retry-After` 支持秒数和 HTTP 日期，取服务端等待要求与本地退避的较大值。OpenAI 的 `retry-after-ms`、响应中数值型 `retry_after`、Gemini 响应实际保留的 `google.rpc.RetryInfo.retryDelay` 也可提供等待时间。服务端要求单次等待超过 120 秒时直接结束，状态为 `SERVER_WAIT_LIMIT`，不会提前重试。未知业务码执行通用回退，不保证能够识别所有服务或网关的语义。
+
+重试仅作用于当前模型请求，不推进 Agent 迭代，也不会重新执行已完成工具。工具写文件后，后续模型请求重试耗尽，已完成的文件和工具记录仍保留。网络超时后重试不保证远端只生成或计费一次；本地只接纳一次成功响应。等待和网络请求均可取消。
+
+错误字段分为 `[server]` 与 `[client]`：前者仅包含实际收到的 `http_status`、原始 `code/type/status/param`、请求 ID、等待字段；后者包含来源、尝试次数、状态和等待时长。不生成原因解读、翻译或处理建议。字段值采用 JSON 字面量，区分数字码与字符串码，缺失字段省略。SDK 读取错误响应时最多保留 64 KiB 的原始 JSON 副本，用于保留异常对象会丢失的外层字段；超过上限或非 JSON 正文时回退到 SDK 异常提供的字段。该副本不进入进度事件或会话文件。
+
+`error_details: true` 时额外展示原始 `message` 和允许的嵌套细节（如 `error_code/reason/domain/@type/retryDelay/quota_metric/quota_id/limit`）；默认关闭。展示值会替换已配置的 API Key、Bearer 凭据及常见敏感键值为 `[redacted]`，转义控制字符，每个字符串最多 1000 个 Unicode 码点后附 `[truncated]`；省略字段标记为 `fields_omitted: true`。不打印完整响应头、Cookie、请求正文、堆栈或 HTML/非 JSON 正文。脱敏不能保证消除 message 中所有业务敏感信息。中间错误仅进入进度事件，最终诊断按相同展示策略保存，历史会话文件格式不变。
+
+Claude 仅作为后续适配参考，当前没有 `anthropic` 配置值或原生 Messages 客户端：临时 429、500、529 可以重试；`error.details.error_code=enforced_spend_limit_reached` 不应重试，不能仅凭缺少 `Retry-After` 判定。[错误说明](https://platform.claude.com/docs/en/api/errors)、[额度字段](https://platform.claude.com/docs/en/api/rate-limits)
 
 ## 工具与执行边界
 
@@ -357,3 +399,7 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
 `build` 包含测试与发行归档，`installDist` 生成可运行目录。测试报告位于 `build/reports/tests/test/index.html`。
 
 测试覆盖多轮文件修改、目录隔离、重启恢复、不确定操作不重放、保存失败、取消竞争、模型传输中止、进程清理、CLI 命令及终端输入重绘等场景。使用模拟模型和本地服务，不调用付费模型接口；符号链接相关测试可能因系统权限条件跳过。
+
+### 本机双击启动
+
+在项目根目录双击 start-agent.bat，启动器会先切换到项目目录，再调用 build/install 下的程序，确保读取根目录的 config.yaml 和 config.local.yaml。修改源码后需重新运行 .\gradlew.bat installDist。直接双击安装目录 bin 下的 BAT 时，需要在 bin 中自行放置配置文件；本地密钥配置不会自动打包进发行包。

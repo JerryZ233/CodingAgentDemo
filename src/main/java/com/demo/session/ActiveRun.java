@@ -54,6 +54,12 @@ final class ActiveRun implements RunHandle {
         switch (event.getType()) {
             case ITERATION_STARTED -> events.append(SessionEvent.Type.ITERATION_STARTED, new SessionEvent.Progress(event.getIteration()));
             case LLM_REQUEST_STARTED -> events.append(SessionEvent.Type.LLM_REQUEST_STARTED, new SessionEvent.Progress(event.getIteration()));
+            case LLM_RETRY -> events.append(SessionEvent.Type.LLM_RETRY,
+                    new SessionEvent.ModelFailure(event.getIteration(), event.getFailure()));
+            case LLM_ERROR -> {
+                if (event.getFailure() != null) events.append(SessionEvent.Type.LLM_FAILED,
+                        new SessionEvent.ModelFailure(event.getIteration(), event.getFailure()));
+            }
             case LLM_RESPONSE -> events.append(SessionEvent.Type.ASSISTANT_MESSAGE,
                     new SessionEvent.AssistantMessage(event.getIteration(), event.getMessage(), event.isFinalResponse()));
             case TOOL_STARTED -> events.append(SessionEvent.Type.TOOL_STARTED,

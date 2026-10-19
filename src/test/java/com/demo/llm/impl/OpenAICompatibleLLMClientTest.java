@@ -4,6 +4,11 @@ import com.demo.agent.AgentLoop;
 import com.demo.agent.Context;
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
+import com.demo.llm.RetryPolicy;
+import com.demo.llm.LLMFailure;
+import com.demo.execution.CancellationSource;
+import com.demo.execution.CancellationToken;
+import com.demo.execution.OperationCancelledException;
 import com.demo.model.Message;
 import com.demo.model.ToolResult;
 import com.demo.tools.Tool;
@@ -19,6 +24,8 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -53,6 +60,7 @@ class OpenAICompatibleLLMClientTest {
                 if (reply.delayMillis() > 0) Thread.sleep(reply.delayMillis());
                 byte[] bytes = reply.body().getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
+                reply.headers().forEach((name, value) -> exchange.getResponseHeaders().set(name, value));
                 exchange.sendResponseHeaders(reply.status(), bytes.length);
                 exchange.getResponseBody().write(bytes);
             } catch (InterruptedException e) {
@@ -174,7 +182,7 @@ class OpenAICompatibleLLMClientTest {
             replies.add(new Reply(status, "{\"error\":{\"message\":\"private-response-body\"}}", 0));
             var response = client("/v1").sendMessage(List.of(Message.user("hi")), null);
             assertTrue(response.isError());
-            assertTrue(response.getText().contains("HTTP " + status));
+            assertTrue(response.getText().contains("http_status: " + status));
             assertFalse(response.getText().contains("private-response-body"));
         }
         assertEquals(3, requestCount.get());
@@ -212,15 +220,16 @@ class OpenAICompatibleLLMClientTest {
         try (ServerSocket socket = new ServerSocket(0, 0, java.net.InetAddress.getByName("127.0.0.1"))) {
             port = socket.getLocalPort();
         }
-        var response = new OpenAICompatibleLLMClient("http://127.0.0.1:" + port + "/v1", "test-key", "model", 10, 0)
-                .sendMessage(List.of(Message.user("hi")), null);
-        assertTrue(response.isError());
+        try (var model = configuredClient("http://127.0.0.1:" + port + "/v1", new RetryPolicy(0, 1, 1),
+                RetryWaiter.cancellable())) {
+            assertTrue(model.sendMessage(List.of(Message.user("hi")), null).isError());
+        }
     }
 
     @Test
     void timeoutBecomesErrorWithoutRetry() {
         replies.add(new Reply(200, completion("{\"role\":\"assistant\",\"content\":\"late\"}"), 2000));
-        try (var client = new OpenAICompatibleLLMClient(origin + "/v1", "test-key", "model", 10, 0, Duration.ofMillis(500))) {
+        try (var client = configuredClient(origin + "/v1", new RetryPolicy(0, 1, 1), RetryWaiter.cancellable())) {
             var response = client
                     .sendMessage(List.of(Message.user("hi")), null);
             assertTrue(response.isError());
@@ -229,7 +238,137 @@ class OpenAICompatibleLLMClientTest {
     }
 
     private OpenAICompatibleLLMClient client(String path) {
-        return new OpenAICompatibleLLMClient(origin + path, "test-key", "custom-model", 128, 0.25);
+        return configuredClient(origin + path, new RetryPolicy(0, 1, 1), RetryWaiter.cancellable());
+    }
+
+    @Test void retriesTransientErrorsWithIdenticalRequestsAndBoundedAttempts() throws Exception {
+        List<Long> waits = new ArrayList<>();
+        List<LLMFailure> progress = new ArrayList<>();
+        for (int status : new int[] {429, 500, 503})
+            replies.add(new Reply(status, "{\"error\":{\"code\":\"transient\"}}", 0));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"recovered\"}"));
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> waits.add(delay))) {
+            var response = model.sendMessage(List.of(Message.user("hi")), null, CancellationToken.none(), progress::add);
+            assertEquals("recovered", response.getText());
+        }
+        assertEquals(List.of(2000L, 4000L, 8000L), waits);
+        assertEquals(3, progress.size());
+        assertEquals("\"transient\"", progress.get(0).error().fields().get("error.code"));
+        var first = takeRequest().body();
+        for (int i = 0; i < 3; i++) assertEquals(first, takeRequest().body());
+
+        for (int i = 0; i < 6; i++) replies.add(new Reply(429, "{}", 0));
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+            var result = model.sendMessage(List.of(Message.user("hi")), null);
+            assertEquals(LLMFailure.State.RETRIES_EXHAUSTED, result.getFailure().orElseThrow().state());
+            assertEquals(6, result.getFailure().orElseThrow().attempt());
+        }
+        assertEquals(10, requestCount.get());
+    }
+
+    @Test void honorsRetryAfterAndStopsBeforeExcessiveServerDelay() {
+        List<Long> waits = new ArrayList<>();
+        replies.add(new Reply(429, "{}", 0, Map.of("Retry-After", "12", "X-Request-Id", "req_123")));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"done\"}"));
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> waits.add(delay))) {
+            assertFalse(model.sendMessage(List.of(Message.user("hi")), null).isError());
+        }
+        assertEquals(List.of(12000L), waits);
+        replies.add(new Reply(429, "{}", 0, Map.of("Retry-After", "121")));
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> fail("must not wait"))) {
+            var response = model.sendMessage(List.of(Message.user("hi")), null);
+            assertEquals(LLMFailure.State.SERVER_WAIT_LIMIT, response.getFailure().orElseThrow().state());
+            assertTrue(response.getText().contains("121"));
+        }
+        assertEquals(3, requestCount.get());
+    }
+
+    @Test void cancellationDuringBackoffDoesNotSendAnotherRequest() throws Exception {
+        replies.add(new Reply(429, "{}", 0));
+        CancellationSource cancellation = new CancellationSource();
+        CountDownLatch waiting = new CountDownLatch(1);
+        var worker = Executors.newSingleThreadExecutor();
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, RetryWaiter.cancellable())) {
+            var task = worker.submit(() -> model.sendMessage(List.of(Message.user("hi")), null,
+                    cancellation.token(), failure -> waiting.countDown()));
+            assertTrue(waiting.await(3, TimeUnit.SECONDS));
+            cancellation.cancel();
+            assertInstanceOf(OperationCancelledException.class,
+                    assertThrows(ExecutionException.class, () -> task.get(2, TimeUnit.SECONDS)).getCause());
+            assertEquals(1, requestCount.get());
+        } finally { worker.shutdownNow(); }
+    }
+
+    @Test void retryAfterToolExecutionDoesNotReplayToolOrAdvanceIteration(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        verifyToolRetry(directory, true);
+    }
+
+    @Test void exhaustedRetryPreservesWrittenFileAndToolRecord(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        verifyToolRetry(directory, false);
+    }
+
+    private void verifyToolRetry(java.nio.file.Path directory, boolean recover) throws Exception {
+        replies.add(ok("{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[" + functionCall("once", "write_file") + "]}"));
+        for (int i = 0; i < (recover ? 1 : 6); i++) replies.add(new Reply(429, "{}", 0));
+        if (recover) replies.add(ok("{\"role\":\"assistant\",\"content\":\"done\"}"));
+        AtomicInteger executed = new AtomicInteger();
+        Tool tool = new Tool() {
+            public String getName() { return "write_file"; }
+            public String getDescription() { return "test"; }
+            public ToolResult execute(String args) {
+                executed.incrementAndGet();
+                try { java.nio.file.Files.writeString(directory.resolve("1.txt"), "35"); }
+                catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+                return ToolResult.success(getName(), "35");
+            }
+        };
+        Context context = new Context();
+        context.addUserMessage("write answer");
+        context.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
+        List<com.demo.agent.AgentEvent> events = new ArrayList<>();
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+            var result = new AgentLoop(model, Map.of("write_file", tool)).run(context,
+                    com.demo.agent.AgentCheckpoint.noop(), CancellationToken.none(), events::add);
+            assertEquals(recover, result.isCompleted());
+            assertEquals(2, result.getIterations());
+        }
+        assertEquals(1, executed.get());
+        assertEquals("35", java.nio.file.Files.readString(directory.resolve("1.txt")));
+        assertEquals(recover ? 1 : 5, events.stream().filter(e -> e.getType() == com.demo.agent.AgentEvent.Type.LLM_RETRY).count());
+        assertEquals(recover ? 0 : 1, context.getMessages().stream().filter(m -> m.getContent() != null && m.getContent().contains("[server]")).count());
+        assertEquals(1, context.getMessages().stream().filter(m -> "tool".equals(m.getRole())).count());
+    }
+
+    @Test void providerSpecificSdkErrorBodyPreservesNumericCodeAndDetails() {
+        replies.add(new Reply(429, "{\"error\":{\"code\":1113,\"message\":\"original message test-key\",\"param\":null},\"request_id\":\"body_req\"}", 0,
+                Map.of("X-Request-ID", "header_req")));
+        try (var model = new OpenAICompatibleLLMClient(origin + "/v1", "test-key", "model", 128, 0.25,
+                Duration.ofSeconds(2), LLMProvider.ZHIPU, RetryPolicy.DEFAULT, true, Clock.systemUTC(), () -> 0,
+                (delay, token) -> fail("permanent business code must not wait"))) {
+            var result = model.sendMessage(List.of(Message.user("hi")), null);
+            var failure = result.getFailure().orElseThrow();
+            assertEquals(LLMFailure.State.NON_RETRYABLE, failure.state());
+            assertEquals("1113", failure.error().fields().get("error.code"));
+            assertEquals("null", failure.error().fields().get("error.param"));
+            assertEquals("\"original message [redacted]\"", failure.error().fields().get("error.message"));
+            assertEquals("\"body_req\"", failure.error().fields().get("request_id"));
+            assertEquals("\"header_req\"", failure.error().fields().get("headers.x-request-id"));
+        }
+        assertEquals(1, requestCount.get());
+    }
+
+    @Test void timeoutCanRecoverWithoutWaitingInTest() {
+        replies.add(new Reply(200, completion("{\"role\":\"assistant\",\"content\":\"late\"}"), 1200));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"recovered\"}"));
+        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+            assertEquals("recovered", model.sendMessage(List.of(Message.user("hi")), null).getText());
+        }
+        assertEquals(2, requestCount.get());
+    }
+
+    private OpenAICompatibleLLMClient configuredClient(String url, RetryPolicy policy, RetryWaiter waiter) {
+        return new OpenAICompatibleLLMClient(url, "test-key", "custom-model", 128, 0.25, Duration.ofMillis(500),
+                LLMProvider.GENERIC, policy, false, Clock.systemUTC(), () -> 0, waiter);
     }
 
     private CapturedRequest takeRequest() throws InterruptedException {
@@ -250,6 +389,8 @@ class OpenAICompatibleLLMClientTest {
                 + "\",\"arguments\":\"{\\\"path\\\":\\\"README.md\\\"}\"}}";
     }
 
-    private record Reply(int status, String body, long delayMillis) {}
+    private record Reply(int status, String body, long delayMillis, Map<String, String> headers) {
+        Reply(int status, String body, long delayMillis) { this(status, body, delayMillis, Map.of()); }
+    }
     private record CapturedRequest(String path, String authorization, String method, JsonObject body) {}
 }

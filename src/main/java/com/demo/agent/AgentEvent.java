@@ -14,6 +14,7 @@ public class AgentEvent {
         RUN_STARTED,
         ITERATION_STARTED,
         LLM_REQUEST_STARTED,
+        LLM_RETRY,
         LLM_RESPONSE,
         LLM_ERROR,
         TOOL_RESULT,
@@ -33,6 +34,21 @@ public class AgentEvent {
     private String arguments;
     private ToolResult toolResult;
     private boolean finalResponse;
+    private com.demo.llm.LLMFailure failure;
+
+    public com.demo.llm.LLMFailure getFailure() { return failure; }
+
+    public static AgentEvent llmRetry(int iteration, com.demo.llm.LLMFailure failure) {
+        AgentEvent event = new AgentEvent(Type.LLM_RETRY, iteration, null, null, null);
+        event.failure = failure;
+        return event;
+    }
+
+    public static AgentEvent llmError(int iteration, String message, com.demo.llm.LLMFailure failure) {
+        AgentEvent event = llmError(iteration, message);
+        event.failure = failure;
+        return event;
+    }
 
     private AgentEvent(Type type, int iteration, String message, String toolName, AgentRunResult.Status status) {
         this.type = Objects.requireNonNull(type, "type");

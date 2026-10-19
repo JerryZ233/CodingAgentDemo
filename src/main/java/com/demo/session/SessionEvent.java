@@ -7,10 +7,11 @@ import java.time.Instant;
 public record SessionEvent(String sessionId, String runId, long sequence, Instant timestamp,
                            Type type, Payload payload) {
     public enum Type {
-        RUN_STARTED, ITERATION_STARTED, LLM_REQUEST_STARTED, ASSISTANT_MESSAGE,
+        RUN_STARTED, ITERATION_STARTED, LLM_REQUEST_STARTED, LLM_RETRY, LLM_FAILED, ASSISTANT_MESSAGE,
         TOOL_STARTED, TOOL_RESULT, CANCEL_REQUESTED, RUN_FINISHED
     }
-    public sealed interface Payload permits Progress, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public sealed interface Payload permits Progress, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public record ModelFailure(int iteration, com.demo.llm.LLMFailure failure) implements Payload { }
     public record Progress(int iteration) implements Payload { }
     public record AssistantMessage(int iteration, String text, boolean finalResponse) implements Payload { }
     public record ToolStarted(int iteration, String callId, String name, String arguments) implements Payload { }

@@ -3,6 +3,8 @@ package com.demo.config;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Set;
+import com.demo.llm.RetryPolicy;
+import com.demo.llm.impl.LLMProvider;
 
 /**
  * Immutable configuration values for the AI coding agent.
@@ -31,6 +33,9 @@ public final class Config {
     private final int maxIterations;
     private final String workspaceDir;
     private final Set<String> enabledTools;
+    private final String provider;
+    private final RetryPolicy retryPolicy;
+    private final boolean errorDetails;
 
     public Config(
             String apiUrl,
@@ -41,6 +46,13 @@ public final class Config {
             int maxIterations,
             String workspaceDir,
             Set<String> enabledTools) {
+        this(apiUrl, model, apiKey, maxTokens, temperature, maxIterations, workspaceDir,
+                enabledTools, "auto", RetryPolicy.DEFAULT, false);
+    }
+
+    public Config(String apiUrl, String model, String apiKey, int maxTokens, double temperature,
+                  int maxIterations, String workspaceDir, Set<String> enabledTools,
+                  String provider, RetryPolicy retryPolicy, boolean errorDetails) {
         this.apiUrl = requireText(apiUrl, "apiUrl");
         this.model = requireText(model, "model");
         this.apiKey = apiKey == null ? "" : apiKey;
@@ -49,7 +61,14 @@ public final class Config {
         this.maxIterations = maxIterations;
         this.workspaceDir = requireText(workspaceDir, "workspaceDir");
         this.enabledTools = Set.copyOf(Objects.requireNonNull(enabledTools, "enabledTools"));
+        this.provider = LLMProvider.parse(provider).name().toLowerCase(java.util.Locale.ROOT);
+        this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
+        this.errorDetails = errorDetails;
     }
+
+    public String getProvider() { return provider; }
+    public RetryPolicy getRetryPolicy() { return retryPolicy; }
+    public boolean isErrorDetails() { return errorDetails; }
 
     public static Config defaults() {
         return new Config(

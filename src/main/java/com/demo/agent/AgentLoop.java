@@ -57,14 +57,17 @@ public class AgentLoop {
                 events.append(AgentEvent.iterationStarted(iteration));
                 var messages = context.buildMessagesForLLM();
                 token.runIfActive(() -> events.append(AgentEvent.llmRequestStarted(current)));
-                LLMClient.LLMResponse response = llmClient.sendMessage(messages, context.getToolDescriptions(), token);
+                LLMClient.LLMResponse response = llmClient.sendMessage(messages, context.getToolDescriptions(), token,
+                        failure -> token.runIfActive(() -> events.append(AgentEvent.llmRetry(current, failure))));
                 token.throwIfCancellationRequested();
                 if (response == null || response.isError()) {
-                    String error = response == null ? "Failed to get response from LLM." : "Error: " + response.getText();
+                    String error = response == null ? "Failed to get response from LLM."
+                            : response.getFailure().isPresent() ? response.getText() : "Error: " + response.getText();
                     if (response != null) token.runIfActive(() -> context.addAssistantMessage(error));
                     checkpoint.save(context, iteration);
                     observer.onLlmError(error);
-                    events.append(AgentEvent.llmError(iteration, error));
+                    events.append(AgentEvent.llmError(iteration, error,
+                            response == null ? null : response.getFailure().orElse(null)));
                     return complete(AgentRunResult.llmError(error, iteration), events);
                 }
                 String text = response.getText() == null ? "" : response.getText();

@@ -33,6 +33,11 @@ public interface LLMClient extends AutoCloseable {
         token.throwIfCancellationRequested();
         return response;
     }
+
+    default LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token,
+                                   java.util.function.Consumer<LLMFailure> onRetry) {
+        return sendMessage(messages, toolsDescription, token);
+    }
     
     /**
      * Response from the LLM containing text and/or tool calls.
@@ -41,16 +46,28 @@ public interface LLMClient extends AutoCloseable {
         private final String text;
         private final List<ToolCall> toolCalls;
         private final boolean error;
+        private final LLMFailure failure;
         
         public LLMResponse(String text, List<ToolCall> toolCalls) {
             this(text, toolCalls, false);
         }
 
         private LLMResponse(String text, List<ToolCall> toolCalls, boolean error) {
+            this(text, toolCalls, error, null);
+        }
+
+        private LLMResponse(String text, List<ToolCall> toolCalls, boolean error, LLMFailure failure) {
             this.text = text;
             this.toolCalls = toolCalls;
             this.error = error;
+            this.failure = failure;
         }
+
+        public static LLMResponse error(LLMFailure failure) {
+            return new LLMResponse(LLMErrorFormatter.format(failure), null, true, failure);
+        }
+
+        public java.util.Optional<LLMFailure> getFailure() { return java.util.Optional.ofNullable(failure); }
 
         public static LLMResponse error(String message) {
             return new LLMResponse(message, null, true);
