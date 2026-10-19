@@ -32,6 +32,7 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     private final String model;
     private final int maxTokens;
     private final double temperature;
+    private final LLMProvider provider;
     private final OpenAIChatAdapter chatAdapter = new OpenAIChatAdapter();
     private final OpenAIResponseMapper responseMapper = new OpenAIResponseMapper();
     private final RetryPolicy retryPolicy;
@@ -70,6 +71,7 @@ public class OpenAICompatibleLLMClient implements LLMClient {
         this.model = model;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
+        this.provider = provider.resolve(apiUrl);
         this.retryPolicy = retryPolicy;
         this.errors = new ProviderErrorAdapter(provider.resolve(apiUrl), apiKey, details, clock);
         this.random = random;
@@ -97,7 +99,12 @@ public class OpenAICompatibleLLMClient implements LLMClient {
         checkActive(token);
         final com.openai.models.chat.completions.ChatCompletionCreateParams params;
         try {
-            params = chatAdapter.buildRequest(messages, toolsDescription, model, maxTokens, temperature);
+            var request = chatAdapter.buildRequest(messages, toolsDescription, model, maxTokens, temperature);
+            // Temporarily disable DeepSeek thinking, including during tool-call follow-ups.
+            params = provider == LLMProvider.DEEPSEEK
+                    ? request.toBuilder().putAdditionalBodyProperty("thinking",
+                        com.openai.core.JsonValue.from(java.util.Map.of("type", "disabled"))).build()
+                    : request;
         } catch (IllegalArgumentException | IllegalStateException invalid) {
             return failure(errors.local(invalid, LLMError.Source.REQUEST), 1, LLMFailure.State.NON_RETRYABLE);
         }

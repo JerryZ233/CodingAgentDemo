@@ -80,6 +80,19 @@ class OpenAICompatibleLLMClientTest {
     }
 
     @Test
+    void disablesDeepSeekThinkingOnTheWire() throws Exception {
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"hello\"}"));
+        try (var client = new OpenAICompatibleLLMClient(origin + "/v1", "test-key", "deepseek-flash",
+                128, 0.25, Duration.ofSeconds(5), LLMProvider.DEEPSEEK,
+                new RetryPolicy(0, 1, 1), false, Clock.systemUTC(), () -> 0.5, RetryWaiter.cancellable())) {
+            assertFalse(client.sendMessage(List.of(Message.user("hi")), OpenAIChatAdapterTest.TOOLS).isError());
+            var body = takeRequest().body();
+            assertEquals("deepseek-flash", body.get("model").getAsString());
+            assertEquals("disabled", body.getAsJsonObject("thinking").get("type").getAsString());
+        }
+    }
+
+    @Test
     void sendsConfiguredRequestAndReceivesText() throws Exception {
         replies.add(ok("{\"role\":\"assistant\",\"content\":\"hello\"}"));
         var response = client("/v1/chat/completions").sendMessage(
@@ -88,6 +101,7 @@ class OpenAICompatibleLLMClientTest {
         assertEquals("hello", response.getText());
         assertFalse(response.hasToolCalls());
         var captured = takeRequest();
+        assertFalse(captured.body().has("thinking"));
         assertEquals("/v1/chat/completions", captured.path());
         assertEquals("POST", captured.method());
         assertEquals("Bearer test-key", captured.authorization());
