@@ -45,6 +45,10 @@ public final class ToolDescriptions {
                         .append(String.join(", ", requiredParameters))
                         .append(".");
             }
+            if (!toolSpec.getCapabilities().isEmpty()) {
+                sb.append(" Capabilities: ").append(toolSpec.getCapabilities().stream().sorted()
+                        .map(Enum::name).collect(Collectors.joining(", "))).append(".");
+            }
             sb.append("\n");
         }
         return sb.toString();

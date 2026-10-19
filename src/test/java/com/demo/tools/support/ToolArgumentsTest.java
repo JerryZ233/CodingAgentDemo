@@ -1,4 +1,4 @@
-package com.demo.tools;
+package com.demo.tools.support;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -8,6 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolArgumentsTest {
+
+    @Test void rejectsUnknownDuplicateAndNonStandardJsonAndAllowsExplicitEmpty() {
+        assertEquals("", ToolArguments.parse("{\"content\":\"\"}", "content").presentString("content"));
+        for (String json : java.util.List.of("{\"extra\":1}", "{\"content\":null}", "{\"content\":\"a\",\"content\":\"b\"}",
+                "{content:'a'}", "{/*comment*/\"content\":\"a\"}", "{} {}"))
+            assertThrows(IllegalArgumentException.class, () -> ToolArguments.parse(json, "content").presentString("content"));
+        assertThrows(IllegalArgumentException.class, () -> ToolArguments.parse(" ".repeat(ToolLimits.ARGUMENT_BYTES + 1)));
+    }
 
     @Test
     @DisplayName("Parses required and optional string arguments")

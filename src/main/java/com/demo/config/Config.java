@@ -61,6 +61,8 @@ public final class Config {
         this.maxIterations = maxIterations;
         this.workspaceDir = requireText(workspaceDir, "workspaceDir");
         this.enabledTools = Set.copyOf(Objects.requireNonNull(enabledTools, "enabledTools"));
+        if (!com.demo.tools.ToolRegistry.KNOWN_TOOLS.containsAll(this.enabledTools))
+            throw new IllegalArgumentException("Unknown enabled tool");
         this.provider = LLMProvider.parse(provider).name().toLowerCase(java.util.Locale.ROOT);
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
         this.errorDetails = errorDetails;

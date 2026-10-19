@@ -24,7 +24,9 @@ class CliSessionIntegrationTest {
             if (content.equals("modify")) {
                 assertTrue(messages.stream().anyMatch(m -> "first".equals(m.getContent())));
                 return new LLMClient.LLMResponse("", List.of(new ToolCall("write_file",
-                        "{\"path\":\"note.txt\",\"content\":\"modified\"}")));
+                        "{\"path\":\"note.txt\",\"content\":\"modified\",\"expected_sha256\":\"" +
+                        com.google.gson.JsonParser.parseString(messages.stream().filter(m -> "tool".equals(m.getRole())).reduce((a, b) -> b).orElseThrow().getContent())
+                                .getAsJsonObject().get("sha256").getAsString() + "\"}")));
             }
             return new LLMClient.LLMResponse("", List.of(new ToolCall("write_file",
                     "{\"path\":\"note.txt\",\"content\":\"first\"}")));

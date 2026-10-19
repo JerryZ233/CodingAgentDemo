@@ -40,6 +40,11 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+    val testTemp = layout.buildDirectory.dir("test-temp")
+    doFirst { testTemp.get().asFile.mkdirs() }
+    systemProperty("java.io.tmpdir", testTemp.get().asFile.absolutePath)
+    systemProperty("junit.jupiter.tempdir.factory.default", "com.demo.testing.RetryingTempDirectories")
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
     systemProperty("coding.agent.log.dir", layout.buildDirectory.dir("test-logs").get().asFile.absolutePath)
     systemProperty("coding.agent.test.classpath", sourceSets.main.get().runtimeClasspath.asPath)
 }

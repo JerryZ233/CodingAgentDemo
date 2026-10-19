@@ -135,27 +135,23 @@ public final class ConfigLoader {
     @SuppressWarnings("unchecked")
     private static Set<String> loadEnabledTools(Map<String, Object> yamlConfig) {
         Object tools = yamlConfig.get("tools");
-        if (!(tools instanceof Map)) {
-            return Config.DEFAULT_ENABLED_TOOLS;
-        }
+        if (!yamlConfig.containsKey("tools")) return Config.DEFAULT_ENABLED_TOOLS;
+        if (!(tools instanceof Map)) throw new IllegalArgumentException("tools must be a mapping");
 
         Object enabled = ((Map<String, Object>) tools).get("enabled");
-        if (!(enabled instanceof List)) {
-            return Config.DEFAULT_ENABLED_TOOLS;
-        }
+        if (!((Map<?, ?>) tools).containsKey("enabled")) return Config.DEFAULT_ENABLED_TOOLS;
+        if (!(enabled instanceof List)) throw new IllegalArgumentException("tools.enabled must be a list");
 
         Set<String> result = new HashSet<>();
         for (Object item : (List<Object>) enabled) {
-            if (item == null) {
-                continue;
-            }
-            String toolName = item.toString().trim();
-            if (!toolName.isEmpty()) {
-                result.add(toolName);
-            }
+            if (!(item instanceof String)) throw new IllegalArgumentException("Tool names must be strings");
+            String toolName = ((String) item).trim();
+            if (!com.demo.tools.ToolRegistry.KNOWN_TOOLS.contains(toolName))
+                throw new IllegalArgumentException("Unknown or empty tool name: " + toolName);
+            result.add(toolName);
         }
 
-        return result.isEmpty() ? Config.DEFAULT_ENABLED_TOOLS : Set.copyOf(result);
+        return Set.copyOf(result);
     }
 
     private static int parseInt(String key, String value) {

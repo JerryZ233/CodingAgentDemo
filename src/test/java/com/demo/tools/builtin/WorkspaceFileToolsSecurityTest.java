@@ -1,4 +1,4 @@
-package com.demo.tools;
+package com.demo.tools.builtin;
 
 import com.demo.model.ToolResult;
 import com.google.gson.JsonObject;
@@ -39,7 +39,7 @@ class WorkspaceFileToolsSecurityTest {
 
         ToolResult read = readTool().execute(json("path", "nested/ok.txt"));
         assertTrue(read.isSuccess(), read.getOutput());
-        assertEquals("hello", read.getOutput());
+        assertEquals("hello", com.google.gson.JsonParser.parseString(read.getOutput()).getAsJsonObject().get("content").getAsString());
 
         ToolResult list = listTool().execute(json("path", "nested"));
         assertTrue(list.isSuccess(), list.getOutput());
@@ -54,11 +54,11 @@ class WorkspaceFileToolsSecurityTest {
         ToolResult list = listTool().execute(json("path", ".."));
 
         assertFalse(read.isSuccess());
-        assertTrue(read.getOutput().contains("Path traversal"), read.getOutput());
+        assertTrue(read.getOutput().contains("ACCESS_DENIED"), read.getOutput());
         assertFalse(write.isSuccess());
-        assertTrue(write.getOutput().contains("Path traversal"), write.getOutput());
+        assertTrue(write.getOutput().contains("ACCESS_DENIED"), write.getOutput());
         assertFalse(list.isSuccess());
-        assertTrue(list.getOutput().contains("Path traversal"), list.getOutput());
+        assertTrue(list.getOutput().contains("ACCESS_DENIED"), list.getOutput());
     }
 
     @Test

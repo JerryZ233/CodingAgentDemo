@@ -34,8 +34,8 @@ class SessionLifecycleIntegrationTest {
                     yield call("read_file", "{\"path\":\"hello.txt\"}");
                 }
                 case 3 -> {
-                    assertEquals("hello", last.getContent());
-                    yield call("write_file", "{\"path\":\"hello.txt\",\"content\":\"hello world\"}");
+                    assertEquals("hello", com.google.gson.JsonParser.parseString(last.getContent()).getAsJsonObject().get("content").getAsString());
+                    yield call("write_file", "{\"path\":\"hello.txt\",\"content\":\"hello world\",\"expected_sha256\":\"" + com.google.gson.JsonParser.parseString(last.getContent()).getAsJsonObject().get("sha256").getAsString() + "\"}");
                 }
                 case 4 -> new LLMClient.LLMResponse("modified", null);
                 case 5 -> {
@@ -44,7 +44,7 @@ class SessionLifecycleIntegrationTest {
                     yield call("read_file", "{\"path\":\"hello.txt\"}");
                 }
                 case 6 -> {
-                    assertEquals("hello world", last.getContent());
+                    assertEquals("hello world", com.google.gson.JsonParser.parseString(last.getContent()).getAsJsonObject().get("content").getAsString());
                     yield new LLMClient.LLMResponse("verified after restart", null);
                 }
                 default -> throw new AssertionError("Unexpected model request");
@@ -88,7 +88,7 @@ class SessionLifecycleIntegrationTest {
                 assertTrue(messages.stream().noneMatch(message -> "write B".equals(message.getContent())));
                 return call("read_file", "{\"path\":\"same.txt\"}");
             }
-            return new LLMClient.LLMResponse(last.getContent(), null);
+            return new LLMClient.LLMResponse(com.google.gson.JsonParser.parseString(last.getContent()).getAsJsonObject().has("content") ? com.google.gson.JsonParser.parseString(last.getContent()).getAsJsonObject().get("content").getAsString() : "written", null);
         };
         try (var service = service(model, new JsonSessionRepository(temp.resolve("sessions")))) {
             String idA = service.createSession(a).id();

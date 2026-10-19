@@ -1,6 +1,9 @@
 package com.demo.tools;
 
 import com.demo.config.Config;
+import com.demo.tools.builtin.*;
+import java.util.Set;
+import java.util.function.Supplier;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -12,6 +15,7 @@ import java.util.Objects;
  * Builds the configured tool set and exposes both executable tools and their specs.
  */
 public final class ToolRegistry {
+    public static final Set<String> KNOWN_TOOLS = Set.of("read_file", "write_file", "list_files", "run_shell");
 
     private final Map<String, Tool> tools;
     private final List<ToolSpec> toolSpecs;
@@ -30,10 +34,11 @@ public final class ToolRegistry {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Map<String, Tool> registeredTools = new LinkedHashMap<>();
 
-        registerIfEnabled(registeredTools, new FileReadTool(workspaceRoot), config);
-        registerIfEnabled(registeredTools, new FileWriteTool(workspaceRoot), config);
-        registerIfEnabled(registeredTools, new FileListTool(workspaceRoot), config);
-        registerIfEnabled(registeredTools, new ShellRunTool(workspaceRoot), config);
+        if (!KNOWN_TOOLS.containsAll(config.getEnabledTools())) throw new IllegalArgumentException("Unknown enabled tool");
+        registerIfEnabled(registeredTools, "read_file", () -> new FileReadTool(workspaceRoot), config);
+        registerIfEnabled(registeredTools, "write_file", () -> new FileWriteTool(workspaceRoot), config);
+        registerIfEnabled(registeredTools, "list_files", () -> new FileListTool(workspaceRoot), config);
+        registerIfEnabled(registeredTools, "run_shell", () -> new ShellRunTool(workspaceRoot), config);
 
         return new ToolRegistry(registeredTools);
     }
@@ -46,9 +51,9 @@ public final class ToolRegistry {
         return toolSpecs;
     }
 
-    private static void registerIfEnabled(Map<String, Tool> tools, Tool tool, Config config) {
-        if (config.getEnabledTools().contains(tool.getName())) {
-            tools.put(tool.getName(), tool);
+    private static void registerIfEnabled(Map<String, Tool> tools, String name, Supplier<Tool> factory, Config config) {
+        if (config.getEnabledTools().contains(name)) {
+            tools.put(name, factory.get());
         }
     }
 }

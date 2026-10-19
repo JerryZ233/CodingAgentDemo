@@ -126,14 +126,12 @@ class ConfigLoaderTest {
         assertTrue(error.getMessage().contains("many"), error.getMessage());
     }
 
-    @Test
-    @DisplayName("Blank enabled tool entries fall back to defaults only when none remain")
-    void enabledToolsIgnoreBlankEntries() {
-        Config config = ConfigLoader.from(
-            Map.of("tools", Map.of("enabled", java.util.List.of("read_file", " ", "run_shell"))),
-            Map.of()
-        );
-
-        assertEquals(Set.of("read_file", "run_shell"), config.getEnabledTools());
+    @Test void enabledToolsValidateAndEmptyMeansDisabled() {
+        assertEquals(Set.of(), ConfigLoader.from(Map.of("tools", Map.of("enabled", java.util.List.of())), Map.of()).getEnabledTools());
+        assertEquals(Config.DEFAULT_ENABLED_TOOLS, ConfigLoader.from(Map.of(), Map.of()).getEnabledTools());
+        assertEquals(Set.of("read_file"), ConfigLoader.from(Map.of("tools", Map.of("enabled", java.util.List.of("read_file", "read_file"))), Map.of()).getEnabledTools());
+        for (Object invalid : java.util.List.of("read_file", java.util.List.of(" "), java.util.List.of("unknown"), java.util.List.of(1), java.util.Arrays.asList((Object)null)))
+            assertThrows(IllegalArgumentException.class, () -> ConfigLoader.from(Map.of("tools", Map.of("enabled", invalid)), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> ConfigLoader.from(Map.of("tools", "wrong"), Map.of()));
     }
 }

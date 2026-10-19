@@ -12,6 +12,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolRegistryTest {
 
+    @Test void emptyRegistryDoesNotInstantiateToolsOrResolveWorkspace() {
+        var base = Config.defaults();
+        var config = new Config(base.getApiUrl(), base.getModel(), "", base.getMaxTokens(), base.getTemperature(),
+                base.getMaxIterations(), base.getWorkspaceDir(), Set.of());
+        var registry = ToolRegistry.fromConfig(config, java.nio.file.Path.of("does-not-exist-for-empty-registry"));
+        assertTrue(registry.getTools().isEmpty()); assertTrue(registry.getToolSpecs().isEmpty());
+    }
+    @Test void capabilitiesAreImmutableAndMatchExecution() {
+        var registry = ToolRegistry.fromConfig(Config.defaults());
+        var read = registry.getTools().get("read_file").getSpec();
+        assertEquals(Set.of(ToolSpec.Capability.FILE_READ), read.getCapabilities());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class,
+                () -> read.getCapabilities().clear());
+    }
+
     @Test
     void explicitWorkspaceOverridesConfigDirectoryForActualToolExecution(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root)
             throws java.io.IOException {
@@ -19,7 +34,7 @@ class ToolRegistryTest {
         var write = registry.getTools().get("write_file").execute("{\"path\":\"a.txt\",\"content\":\"in session\"}");
         assertTrue(write.isSuccess(), write.getOutput());
         assertEquals("in session", java.nio.file.Files.readString(root.resolve("a.txt")));
-        assertEquals("in session", registry.getTools().get("read_file").execute("{\"path\":\"a.txt\"}").getOutput());
+        assertEquals("in session", com.google.gson.JsonParser.parseString(registry.getTools().get("read_file").execute("{\"path\":\"a.txt\"}").getOutput()).getAsJsonObject().get("content").getAsString());
         assertTrue(registry.getTools().get("list_files").execute("{\"path\":\".\"}").getOutput().contains("a.txt"));
     }
 
@@ -53,7 +68,7 @@ class ToolRegistryTest {
         assertEquals(3, registry.getToolSpecs().size());
         assertTrue(registry.getToolSpecs().stream()
                 .anyMatch(spec -> spec.getName().equals("read_file")
-                        && spec.getDescription().contains("Reads content")));
+                        && spec.getDescription().contains("Reads complete")));
         assertTrue(registry.getToolSpecs().stream()
                 .anyMatch(spec -> spec.getName().equals("write_file")
                         && spec.getRequiredParameters().contains("content")));

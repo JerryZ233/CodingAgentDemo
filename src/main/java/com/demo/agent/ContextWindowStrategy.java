@@ -14,7 +14,7 @@ public class ContextWindowStrategy {
 
     public static final int DEFAULT_MAX_HISTORY_CHARS = 64_000;
     public static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
-    public static final int DEFAULT_MAX_MESSAGE_CHARS = 8_000;
+    public static final int DEFAULT_MAX_MESSAGE_CHARS = com.demo.tools.support.ToolLimits.MESSAGE_CHARS;
     private static final String TRUNCATION_SUFFIX = "\n[message truncated]";
 
     private final int maxHistoryChars;

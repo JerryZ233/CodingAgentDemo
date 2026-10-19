@@ -317,7 +317,9 @@ class SessionServiceTest {
              var service = service((messages, tools) -> {
                  if ("tool".equals(messages.get(messages.size() - 1).getRole())) return new LLMClient.LLMResponse("done", null);
                  return new LLMClient.LLMResponse("writing", List.of(new ToolCall("write_file",
-                         "{\"path\":\"a.txt\",\"content\":\"hello\"}")));
+                         "{\"path\":\"a.txt\",\"content\":\"hello\"" +
+                         (messages.stream().filter(m -> "user".equals(m.getRole())).count() > 1
+                         ? ",\"expected_sha256\":\"" + com.demo.tools.fs.WorkspaceFileAccess.sha256("hello".getBytes(StandardCharsets.UTF_8)) + "\"" : "") + "}")));
              }, new JsonSessionRepository(temp.resolve("sessions")))) {
             System.setOut(sink);
             System.setErr(sink);
@@ -325,7 +327,7 @@ class SessionServiceTest {
             service.runTurn(session.id(), "write");
             var overwritten = service.runTurn(session.id(), "write again");
             assertTrue(overwritten.messages().stream().anyMatch(message -> message.getContent() != null
-                    && message.getContent().startsWith("File overwritten:")));
+                    && message.getContent().contains("\"action\":\"overwritten\"")));
         } finally {
             System.setOut(beforeOut);
             System.setErr(beforeErr);

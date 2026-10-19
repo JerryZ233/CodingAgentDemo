@@ -1,4 +1,4 @@
-package com.demo.tools;
+package com.demo.tools.process;
 
 import com.demo.execution.CancellationSource;
 import com.demo.execution.CancellationToken;
@@ -15,6 +15,30 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ManagedProcessTest {
     @TempDir Path temp;
+
+    @Test void outputReadFailureIsReportedAndMalformedBytesAreReplaced() throws Exception {
+        try (var process = new ManagedProcess(builder("output"), 128, java.nio.charset.StandardCharsets.UTF_8,
+                input -> new java.io.FilterInputStream(input) {
+                    @Override public int read(byte[] b, int off, int len) throws java.io.IOException { throw new java.io.IOException("simulated read failure"); }
+                })) {
+            assertTrue(process.await(Duration.ofSeconds(5), CancellationToken.none()).outputFailed());
+        }
+        try (var process = new ManagedProcess(builder("invalid"), 128)) {
+            var result = process.await(Duration.ofSeconds(5), CancellationToken.none());
+            assertFalse(result.outputFailed()); assertTrue(result.decodingError());
+            assertTrue(result.output().contains("\uFFFD"));
+        }
+    }
+    @Test void timeoutRetainsOutputAndStdinIsClosed() throws Exception {
+        try (var process = new ManagedProcess(builder("output-wait"), 128)) {
+            var result = process.await(Duration.ofSeconds(1), CancellationToken.none());
+            assertTrue(result.timedOut()); assertTrue(result.output().contains("before-timeout"));
+        }
+        try (var process = new ManagedProcess(builder("stdin"), 128)) {
+            var result = process.await(Duration.ofSeconds(5), CancellationToken.none());
+            assertEquals(0, result.exitCode()); assertTrue(result.output().contains("EOF"));
+        }
+    }
 
     @Test void cancellationStopsParentAndObservedChildAndReader() throws Exception {
         Path pidFile = temp.resolve("child.pid");
@@ -71,7 +95,14 @@ class ManagedProcessTest {
 
     public static class Child {
         public static void main(String[] args) throws Exception {
-            if (args[0].equals("output")) {
+            if (args[0].equals("invalid")) {
+                System.out.write(new byte[]{65, (byte)0xc3, 40});
+            } else if (args[0].equals("stdin")) {
+                if (System.in.read() != -1) throw new AssertionError();
+                System.out.println("EOF");
+            } else if (args[0].equals("output-wait")) {
+                System.out.println("before-timeout"); System.out.flush(); Thread.sleep(20_000);
+            } else if (args[0].equals("output")) {
                 System.out.print("x".repeat(100_000));
             } else if (args[0].equals("tree")) {
                 String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();

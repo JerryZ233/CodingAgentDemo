@@ -17,6 +17,12 @@ class CliRendererTest {
     private void event(SessionEvent.Type type, SessionEvent.Payload payload) {
         renderer.event(new SessionEvent("secret-session", "secret-run", 1, Instant.now(), type, payload));
     }
+    @Test void writeSummaryShowsOnlyActionPathAndByteCount() {
+        event(SessionEvent.Type.TOOL_RESULT, new SessionEvent.ToolFinished(1, "secret-call", "write_file",
+                ToolResult.success("write_file", "{\"path\":\"hello.txt\",\"action\":\"created\",\"bytes\":5,\"sha256\":\"secret-digest\"}")));
+        assertTrue(text.toString().contains("已创建文件")); assertTrue(text.toString().contains("hello.txt"));
+        assertTrue(text.toString().contains("5 字节")); assertFalse(text.toString().contains("secret-"));
+    }
     @Test void retryAndTerminalFailureShowChineseWithoutDiagnosticFields() {
         var error = new LLMError(LLMError.Source.SERVER, 429, Map.of("request_id", "\"secret-request\""), true, 0);
         var retry = new LLMFailure(error, 1, 11, LLMFailure.State.RETRY_SCHEDULED, 2001L);

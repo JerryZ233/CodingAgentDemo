@@ -20,6 +20,8 @@ public interface Tool {
      * This is used to identify which tool to call.
      */
     String getName();
+
+    default java.util.Set<ToolSpec.Capability> getCapabilities() { return java.util.Set.of(); }
     
     /**
      * Returns a description of what this tool does.

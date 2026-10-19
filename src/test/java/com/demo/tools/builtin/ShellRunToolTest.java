@@ -1,4 +1,4 @@
-package com.demo.tools;
+package com.demo.tools.builtin;
 
 import com.demo.model.ToolResult;
 import com.google.gson.JsonObject;
@@ -19,7 +19,7 @@ class ShellRunToolTest {
     void cancellationIsNotReturnedAsOrdinaryToolFailure() {
         var source = new com.demo.execution.CancellationSource();
         source.cancel();
-        var tool = new ShellRunTool();
+        var tool = new ShellRunTool(Path.of(System.getProperty("user.dir")));
         org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.OperationCancelledException.class,
                 () -> tool.execute("{\"command\":\"echo hello\"}", source.token()));
     }
@@ -31,7 +31,7 @@ class ShellRunToolTest {
         cancellation.addSuppressed(cleanup);
         org.junit.jupiter.api.Assertions.assertSame(cleanup,
                 org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.ResourceCleanupException.class,
-                        () -> ShellRunTool.checkCleanupFailure(cancellation)));
+                        () -> com.demo.tools.process.ShellExecutor.checkCleanupFailure(cancellation)));
     }
 
     @TempDir
@@ -40,7 +40,7 @@ class ShellRunToolTest {
     @Test
     @DisplayName("Shell commands run from workspace root")
     void commandRunsFromWorkspaceRoot() {
-        ShellRunTool tool = new ShellRunTool(Duration.ofSeconds(5), 4096);
+        ShellRunTool tool = new ShellRunTool(Path.of(System.getProperty("user.dir")), Duration.ofSeconds(5), 4096);
         String command = isWindows() ? "cd" : "pwd";
 
         ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
@@ -66,7 +66,7 @@ class ShellRunToolTest {
     @Test
     @DisplayName("Shell commands time out")
     void commandTimesOut() {
-        ShellRunTool tool = new ShellRunTool(Duration.ofMillis(100), 4096);
+        ShellRunTool tool = new ShellRunTool(Path.of(System.getProperty("user.dir")), Duration.ofMillis(100), 4096);
         String command = isWindows() ? "ping -n 5 127.0.0.1" : "sleep 5";
 
         ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
@@ -125,11 +125,8 @@ class ShellRunToolTest {
     void nonInterruptExecutionFailureDoesNotInterruptThread() throws Exception {
         Thread.interrupted();
         Path fileInsteadOfDirectory = Files.writeString(tempDir.resolve("not-a-directory.txt"), "content");
-        ShellRunTool tool = new ShellRunTool(fileInsteadOfDirectory, Duration.ofSeconds(5), 4096);
-
-        ToolResult result = tool.execute("{\"command\":\"echo hello\"}");
-
-        assertFalse(result.isSuccess());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new ShellRunTool(fileInsteadOfDirectory, Duration.ofSeconds(5), 4096));
         assertFalse(Thread.currentThread().isInterrupted());
     }
 

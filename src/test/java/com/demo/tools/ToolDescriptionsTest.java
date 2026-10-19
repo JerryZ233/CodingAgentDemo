@@ -12,6 +12,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolDescriptionsTest {
 
+    @Test void validatesSchemaAndReturnsDefensiveCopies() {
+        var schema = JsonParser.parseString("{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}").getAsJsonObject();
+        var spec = new ToolSpec("read_file", "Reads", schema, java.util.Set.of(ToolSpec.Capability.FILE_READ));
+        schema.addProperty("type", "array"); spec.getParametersSchema().addProperty("type", "array");
+        assertEquals("object", spec.getParametersSchema().get("type").getAsString());
+        assertTrue(ToolDescriptions.toPromptText(List.of(spec)).contains("Capabilities: FILE_READ"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new ToolSpec("bad name", "", null));
+        for (String invalid : List.of("{}", "{\"type\":\"array\",\"properties\":{}}",
+                "{\"type\":\"object\",\"properties\":{\"a\":null}}",
+                "{\"type\":\"object\",\"properties\":{},\"required\":[\"missing\"]}"))
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> new ToolSpec("test", "", JsonParser.parseString(invalid).getAsJsonObject()));
+    }
+
     @Test
     @DisplayName("Prompt text and API schema are rendered from the same ToolSpec")
     void promptTextAndApiSchemaUseSameToolSpec() {

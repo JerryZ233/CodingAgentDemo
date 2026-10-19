@@ -95,7 +95,7 @@ public final class CliRenderer {
             };
             case TOOL_RESULT -> {
                 var tool = (SessionEvent.ToolFinished) event.payload();
-                yield tool.result().isSuccess() ? null : "本次操作未成功，正在继续处理…";
+                yield tool.result().isSuccess() ? writeSummary(tool) : "本次操作未成功，正在继续处理…";
             }
             case CANCEL_REQUESTED -> "已请求取消，等待当前操作及资源清理完成…";
             case RUN_FINISHED -> {
@@ -108,6 +108,17 @@ public final class CliRenderer {
             }
         };
         if (text != null) terminal.printAbove(text);
+    }
+    private static String writeSummary(SessionEvent.ToolFinished tool) {
+        if (!"write_file".equals(tool.name())) return null;
+        try {
+            var data = com.google.gson.JsonParser.parseString(tool.result().getOutput()).getAsJsonObject();
+            String action = data.get("action").getAsString();
+            if (!action.equals("created") && !action.equals("overwritten")) return null;
+            return (action.equals("created") ? "已创建文件 " : "已更新文件 ")
+                    + new com.google.gson.JsonPrimitive(data.get("path").getAsString())
+                    + "（" + data.get("bytes").getAsInt() + " 字节）。";
+        } catch (RuntimeException ignored) { return null; } // Older persisted/custom tool payloads remain supported.
     }
     private static boolean isDiagnostic(String text, SessionSnapshot snapshot) {
         return text.startsWith("[server]\n") || text.startsWith("[client]\n")
