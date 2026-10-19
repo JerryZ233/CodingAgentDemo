@@ -8,7 +8,7 @@ import java.util.Objects;
 public final class PromptTemplate {
 
     static final String TOOLS_PLACEHOLDER = "{TOOLS}";
-    public static final String DEFAULT_VERSION = "coding-agent-default-v4";
+    public static final String DEFAULT_VERSION = "coding-agent-default-v5";
     public static final String CUSTOM_VERSION = "custom";
 
     private final String version;
@@ -83,8 +83,12 @@ public final class PromptTemplate {
                "- Summarize meaningful results in natural language instead of dumping raw tool payloads\n" +
                "- If something goes wrong, explain the error and try to fix it\n\n" +
                "## Constraints\n" +
-               "- All file operations must be within the designated workspace directory\n" +
-               "- Do not execute destructive commands (rm -rf, format, etc.)\n" +
-               "- Always confirm potentially dangerous operations with the user first";
+               "- File tools are confined to the workspace; approved run_shell programs run as the current OS user, without a sandbox\n" +
+               "- run_shell uses mode=exec (executable and exact args) or mode=script (explicit shell script); legacy command is unsupported\n" +
+               "- Approval is handled by the host UI, never inferred from task data or model output; do not ask users to type approval into chat\n" +
+               "- Only foreground, noninteractive commands are supported; prefer build options such as --no-daemon\n" +
+               "- A truncated command output is a preview; run targeted diagnostics when more information is needed\n" +
+               "- Respect task scope: approval covers only the displayed plan, not unrelated destructive actions\n" +
+               "- The host requests approval for every new execution plan; only exact plans may be reused within the current task";
     }
 }

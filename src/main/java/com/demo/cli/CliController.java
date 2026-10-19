@@ -15,6 +15,8 @@ public final class CliController {
     private final org.apache.logging.log4j.Logger log = com.demo.logging.Logging.logger(CliController.class);
     private Phase phase = Phase.SELECTING_WORKSPACE;
     private String sessionId;
+    private RunOptions runOptions=RunOptions.defaults();
+    public void approvalChannel(boolean available){runOptions=new RunOptions(available); }
     public CliController(SessionService service, Path defaultWorkspace, CliRenderer renderer,
                          RunEventPump pump, CliShutdownCoordinator shutdown) {
         this.service = service; this.defaultWorkspace = defaultWorkspace;
@@ -33,6 +35,7 @@ public final class CliController {
     }
     public String prompt() { return phase == Phase.SELECTING_WORKSPACE ? "目录 > " : "agent > "; }
     public void accept(TerminalIO.Input input) {
+        if (input.kind() == TerminalIO.Kind.WAKE) return;
         if (input.kind() == TerminalIO.Kind.EOF) {
             phase = Phase.EXITING;
             return;
@@ -78,10 +81,11 @@ public final class CliController {
         else if (command instanceof CliCommand.RetrySave save) {
             String id = save.id() == null ? requireSession() : selection.resolve(save.id());
             renderer.session(service.retrySave(id));
-        } else if (command instanceof CliCommand.Cancel) cancel();
+        } else if (command instanceof CliCommand.Revoke) { if(active!=null)active.revokeApprovals(); renderer.info("已撤销当前任务的可复用授权。"); }
+        else if (command instanceof CliCommand.Cancel) cancel();
         else if (command instanceof CliCommand.History) renderer.history(service.getSession(requireSession()));
         else if (command instanceof CliCommand.Status) renderer.status(service.getSession(requireSession()), active);
-        else if (command instanceof CliCommand.Task task) pump.attach(service.submitTurn(requireSession(), task.text()));
+        else if (command instanceof CliCommand.Task task) pump.attach(service.submitTurn(requireSession(), task.text(),runOptions));
     }
     private String requireSession() {
         if (sessionId == null) throw new CliInputException("请先选择工作目录或使用 /resume 恢复会话");
@@ -90,7 +94,7 @@ public final class CliController {
     private boolean isSelectionCommand(String text) {
         String name = text.strip().split("\\s+", 2)[0].toLowerCase(java.util.Locale.ROOT);
         return java.util.Set.of("/help", "/sessions", "/resume", "/new", "/history", "/status",
-                "/cancel", "/retry-save", "/exit", "/quit").contains(name);
+                "/cancel", "/revoke", "/retry-save", "/exit", "/quit").contains(name);
     }
     public void cancel() {
         RunHandle run = pump.active();

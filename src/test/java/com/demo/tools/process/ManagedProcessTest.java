@@ -16,6 +16,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class ManagedProcessTest {
     @TempDir Path temp;
 
+    @Test void actualOutputHardLimitStopsFloodingProcess() throws Exception {
+        try(var process=new ManagedProcess(builder("flood"),256*1024)) {
+            var result=process.await(Duration.ofSeconds(10),CancellationToken.none());
+            assertTrue(result.outputLimitExceeded());
+            assertTrue(result.observedBytes()>=16L*1024*1024);
+            assertTrue(result.output().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=256*1024);
+            assertTrue(result.truncated());
+        }
+    }
+
     @Test void outputReadFailureIsReportedAndMalformedBytesAreReplaced() throws Exception {
         try (var process = new ManagedProcess(builder("output"), 128, java.nio.charset.StandardCharsets.UTF_8,
                 input -> new java.io.FilterInputStream(input) {
@@ -95,7 +105,10 @@ class ManagedProcessTest {
 
     public static class Child {
         public static void main(String[] args) throws Exception {
-            if (args[0].equals("invalid")) {
+            if (args[0].equals("flood")) {
+                byte[] bytes=new byte[8192];java.util.Arrays.fill(bytes,(byte)'x');
+                while(true)System.out.write(bytes);
+            } else if (args[0].equals("invalid")) {
                 System.out.write(new byte[]{65, (byte)0xc3, 40});
             } else if (args[0].equals("stdin")) {
                 if (System.in.read() != -1) throw new AssertionError();

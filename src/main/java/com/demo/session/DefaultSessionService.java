@@ -138,7 +138,8 @@ public final class DefaultSessionService implements SessionService {
     }
 
     @Override
-    public RunHandle submitTurn(String id, String message) {
+    public RunHandle submitTurn(String id, String message) { return submitTurn(id,message,RunOptions.defaults()); }
+    @Override public RunHandle submitTurn(String id, String message, RunOptions options) {
         enterMutation();
         try {
             if (message == null || message.isBlank()) {
@@ -154,7 +155,7 @@ public final class DefaultSessionService implements SessionService {
             workspaces.validateStored(session.workspace);
             if (session.agent == null) session.agent = new CodingAgent(client,
                     ToolRegistry.fromConfig(config, session.workspace), config.getMaxIterations());
-            ActiveRun run = new ActiveRun(session.id, clock);
+            ActiveRun run = new ActiveRun(session.id, clock, Objects.requireNonNull(options));
             active = run;
             try {
                 executor.execute(() -> executeTurn(session, message, run));
@@ -200,7 +201,9 @@ public final class DefaultSessionService implements SessionService {
                 if (run.cancellation.token().isCancellationRequested()) session.lastRun = session.lastRun.cancelling();
                 touch(session);
                 persist(session);
-            }, run.cancellation.token(), run::progress);
+            }, new com.demo.tools.ToolExecutionContext(run.cancellation.token(), run.approvals,
+                    repository instanceof JsonSessionRepository json ? json.directory().resolve("command-output") : null,
+                    text -> run.events.append(SessionEvent.Type.COMMAND_OUTPUT,new SessionEvent.CommandOutput(text)),run.runId()), run::progress);
             if (run.beginFinishing()) result = AgentRunResult.cancelled(result.getIterations());
             if (!run.cancellation.callbackFailures().isEmpty()) {
                 throw new ResourceCleanupException("A cancellation resource callback failed", run.cancellation::retryFailedCallbacks);

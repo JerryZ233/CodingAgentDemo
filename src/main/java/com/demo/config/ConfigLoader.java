@@ -72,8 +72,51 @@ public final class ConfigLoader {
                 parseInt("llm.max_retries", getEnvOrYaml(env, "LLM_MAX_RETRIES", "llm.max_retries", "10", config)),
                 parseInt("llm.retry_initial_delay_ms", getEnvOrYaml(env, "LLM_RETRY_INITIAL_DELAY_MS", "llm.retry_initial_delay_ms", "2000", config)),
                 parseInt("llm.retry_max_delay_ms", getEnvOrYaml(env, "LLM_RETRY_MAX_DELAY_MS", "llm.retry_max_delay_ms", "30000", config))),
-            parseBoolean("llm.error_details", getEnvOrYaml(env, "LLM_ERROR_DETAILS", "llm.error_details", "false", config))
+            parseBoolean("llm.error_details", getEnvOrYaml(env, "LLM_ERROR_DETAILS", "llm.error_details", "false", config)),
+            loadShellPolicy(config)
         );
+    }
+
+    private static com.demo.tools.process.ShellPolicyConfig loadShellPolicy(Map<String,Object> config) {
+        var defaults=com.demo.tools.process.ShellPolicyConfig.defaults();
+        Object tools=config.get("tools");
+        if (!(tools instanceof Map<?,?> tm) || !tm.containsKey("shell")) return defaults;
+        Map<?,?> shell=objectMap(tm.get("shell"));
+        for(Object key:shell.keySet()) if(!Set.of("aliases","search_directories","profiles","shell_paths").contains(key))throw new IllegalArgumentException("Unknown tools.shell field");
+        Map<String,Path> aliases=pathMap(shell.get("aliases"),Map.of());
+        Map<String,Path> shells=pathMap(shell.get("shell_paths"),defaults.shells());
+        List<Path> dirs=defaults.searchDirectories();
+        if(shell.containsKey("search_directories")) {
+            if(!(shell.get("search_directories") instanceof List<?> list))throw new IllegalArgumentException("search_directories must be a list");
+            dirs=list.stream().map(v->Path.of(text(v))).toList();
+        }
+        Map<String,com.demo.tools.process.ShellPolicyConfig.EnvironmentProfile> profiles=new HashMap<>(defaults.profiles());
+        if(shell.containsKey("profiles")) for(var entry:objectMap(shell.get("profiles")).entrySet()) {
+            String name=text(entry.getKey());Map<?,?> value=objectMap(entry.getValue());
+            for(Object key:value.keySet()) if(!Set.of("environment","credentials").contains(key))throw new IllegalArgumentException("Unknown profile field");
+            Map<String,String> variables=new HashMap<>(defaults.profiles().get("default").values());
+            for(var variable:objectMap(value.get("environment")).entrySet())variables.put(text(variable.getKey()),text(variable.getValue()));
+            Object credentialValue=value.containsKey("credentials")?value.get("credentials"):Boolean.FALSE;
+            if(!(credentialValue instanceof Boolean))throw new IllegalArgumentException("credentials must be boolean");
+            boolean credentials=(Boolean)credentialValue;
+            if(credentials)objectMap(value.get("environment")).values().forEach(v->com.demo.logging.LogData.registerSecret(text(v)));
+            // Startup injection is never inherited, even through a development profile.
+            for(String key:variables.keySet())if(Set.of("BASH_ENV","ENV","SHELLOPTS","BASHOPTS","CDPATH","PSModulePath").contains(key))throw new IllegalArgumentException("Shell startup injection variable is not supported");
+            profiles.put(name,new com.demo.tools.process.ShellPolicyConfig.EnvironmentProfile(variables,credentials));
+        }
+        return new com.demo.tools.process.ShellPolicyConfig(aliases,dirs,profiles,shells,"shell-policy-v1");
+    }
+    private static Map<?,?> objectMap(Object value) {
+        if(!(value instanceof Map<?,?> map))throw new IllegalArgumentException("Expected configuration object");return map;
+    }
+    private static String text(Object value) {
+        if(!(value instanceof String text)||text.isBlank())throw new IllegalArgumentException("Expected nonempty configuration string");return text;
+    }
+    private static Map<String,Path> pathMap(Object value,Map<String,Path> fallback) {
+        if(value==null)return fallback;
+        Map<String,Path> result=new HashMap<>(fallback);
+        for(var e:objectMap(value).entrySet())result.put(text(e.getKey()),Path.of(text(e.getValue())));
+        return result;
     }
 
     @SuppressWarnings("unchecked")

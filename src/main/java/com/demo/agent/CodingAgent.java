@@ -24,5 +24,9 @@ public final class CodingAgent {
         context.setToolSpecs(tools.getToolSpecs());
         return loop.run(context, checkpoint, token, events);
     }
+    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog events) {
+        context.setToolSpecs(tools.getToolSpecs());
+        return loop.run(context, checkpoint, execution, events);
+    }
     public String getToolDescriptions() { return ToolDescriptions.toOpenAIToolsJson(tools.getToolSpecs()); }
 }

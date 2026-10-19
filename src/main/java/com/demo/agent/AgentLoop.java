@@ -46,6 +46,10 @@ public class AgentLoop {
     }
 
     public AgentRunResult run(Context context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog progress) {
+        return run(context, checkpoint, com.demo.tools.ToolExecutionContext.unavailable(token), progress);
+    }
+    public AgentRunResult run(Context context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog progress) {
+        CancellationToken token = execution.token();
         Objects.requireNonNull(checkpoint);
         AgentEventLog events = event -> { eventLog.append(event); progress.append(event); };
         events.append(AgentEvent.runStarted());
@@ -90,7 +94,7 @@ public class AgentLoop {
                     for (ToolCall call : response.getToolCalls()) {
                         try (var toolScope = org.apache.logging.log4j.CloseableThreadContext.put("tool_call_id", com.demo.logging.LogData.quote(call.getId()))) {
                             token.runIfActive(() -> events.append(AgentEvent.toolStarted(current, call)));
-                            execute(call, context, iteration, checkpoint, token, events);
+                            execute(call, context, iteration, checkpoint, execution, events);
                             token.throwIfCancellationRequested();
                         }
                     }
@@ -101,6 +105,14 @@ public class AgentLoop {
             observer.onMaxIterations(error);
             events.append(AgentEvent.maxIterations(maxIterations, error));
             return complete(AgentRunResult.maxIterations(error, maxIterations), events);
+        } catch (com.demo.tools.process.ShellExecutionException fatal) {
+            Map<String, ToolCall> pending = new LinkedHashMap<>();
+            for (Message message : context.getMessages()) {
+                if (message.getToolCalls()!=null) message.getToolCalls().forEach(call -> pending.put(call.getId(),call));
+                if ("tool".equals(message.getRole())) pending.remove(message.getToolCallId());
+            }
+            for(ToolCall call:pending.values()) record(call,ToolResult.error(call.getToolName(),"Not started: turn stopped after tool error."),context,iteration,checkpoint,events);
+            return complete(AgentRunResult.toolError(fatal.getMessage(),iteration),events);
         } catch (OperationCancelledException cancelled) {
             int current = iteration;
             // Repair is deliberately not cancellable. The next request needs complete tool blocks.
@@ -118,18 +130,24 @@ public class AgentLoop {
     }
 
     private void execute(ToolCall call, Context context, int iteration, AgentCheckpoint checkpoint,
-                         CancellationToken token, AgentEventLog events) {
+                         com.demo.tools.ToolExecutionContext execution, AgentEventLog events) {
+        CancellationToken token = execution.token();
         Tool tool = tools.get(call.getToolName());
         ToolResult result;
         if (tool == null) {
             result = ToolResult.error(call.getToolName(), "Error: Tool '" + call.getToolName() + "' not found.");
         } else {
             try {
-                result = tool.execute(call.getArguments(), token);
+                result = tool.execute(call.getArguments(), execution);
                 if (result == null) result = ToolResult.error(call.getToolName(), "Error: Tool '" + call.getToolName() + "' returned no result.");
             } catch (OperationCancelledException e) {
-                record(call, ToolResult.error(call.getToolName(), CANCELLED_DURING_EXECUTION), context,
+                String cancellationResult=e instanceof com.demo.tools.process.ShellCancelledException shell ?
+                        shell.output()!=null?shell.output():"{\"status\":\"cancelled\",\"started\":"+shell.started()+"}" : CANCELLED_DURING_EXECUTION;
+                record(call, ToolResult.error(call.getToolName(), cancellationResult), context,
                         iteration, checkpoint, events);
+                throw e;
+            } catch (com.demo.tools.process.ShellExecutionException e) {
+                record(call, ToolResult.error(call.getToolName(), "{\"status\":\""+e.getMessage()+"\",\"started\":"+e.started()+"}"), context, iteration, checkpoint, events);
                 throw e;
             } catch (ResourceCleanupException e) {
                 throw e; // Resource failure is not an ordinary tool error.

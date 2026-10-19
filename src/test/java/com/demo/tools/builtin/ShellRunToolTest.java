@@ -1,142 +1,46 @@
 package com.demo.tools.builtin;
-
-import com.demo.model.ToolResult;
-import com.google.gson.JsonObject;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import com.demo.tools.*;
+import com.demo.tools.process.*;
+import com.demo.execution.*;
+import com.google.gson.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import static org.junit.jupiter.api.Assertions.*;
 class ShellRunToolTest {
-
-    @Test
-    void cancellationIsNotReturnedAsOrdinaryToolFailure() {
-        var source = new com.demo.execution.CancellationSource();
-        source.cancel();
-        var tool = new ShellRunTool(Path.of(System.getProperty("user.dir")));
-        org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.OperationCancelledException.class,
-                () -> tool.execute("{\"command\":\"echo hello\"}", source.token()));
-    }
-
-    @Test
-    void cleanupFailureSuppressedByCancellationStillTakesPrecedence() {
-        var cancellation = new com.demo.execution.OperationCancelledException();
-        var cleanup = new com.demo.execution.ResourceCleanupException("still alive", () -> { });
-        cancellation.addSuppressed(cleanup);
-        org.junit.jupiter.api.Assertions.assertSame(cleanup,
-                org.junit.jupiter.api.Assertions.assertThrows(com.demo.execution.ResourceCleanupException.class,
-                        () -> com.demo.tools.process.ShellExecutor.checkCleanupFailure(cancellation)));
-    }
-
-    @TempDir
-    Path tempDir;
-
-    @Test
-    @DisplayName("Shell commands run from workspace root")
-    void commandRunsFromWorkspaceRoot() {
-        ShellRunTool tool = new ShellRunTool(Path.of(System.getProperty("user.dir")), Duration.ofSeconds(5), 4096);
-        String command = isWindows() ? "cd" : "pwd";
-
-        ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
-
-        assertTrue(result.isSuccess(), result.getOutput());
-        String expected = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize().toString();
-        assertTrue(result.getOutput().trim().contains(expected), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Shell commands honor injected workspace root")
-    void commandRunsFromInjectedWorkspaceRoot() {
-        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
-        String command = isWindows() ? "cd" : "pwd";
-
-        ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
-
-        assertTrue(result.isSuccess(), result.getOutput());
-        String expected = tempDir.toAbsolutePath().normalize().toString();
-        assertTrue(result.getOutput().trim().contains(expected), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Shell commands time out")
-    void commandTimesOut() {
-        ShellRunTool tool = new ShellRunTool(Path.of(System.getProperty("user.dir")), Duration.ofMillis(100), 4096);
-        String command = isWindows() ? "ping -n 5 127.0.0.1" : "sleep 5";
-
-        ToolResult result = tool.execute("{\"command\":\"" + command + "\"}");
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.getOutput().contains("timed out"), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Unknown shells are rejected instead of falling back")
-    void unknownShellIsRejected() {
-        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
-
-        ToolResult result = tool.execute("{\"command\":\"echo hello\",\"shell\":\"not-a-real-shell\"}");
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.getOutput().contains("shell is not allowed"), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Shell metacharacters are rejected")
-    void shellMetacharactersAreRejected() {
-        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
-
-        ToolResult result = tool.execute("{\"command\":\"echo hello && echo blocked\"}");
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.getOutput().contains("metacharacters"), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Path-capable shell commands reject arguments")
-    void pathCapableCommandsRejectArguments() {
-        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
-        String command = isWindows() ? "dir C:\\" : "ls /";
-
-        ToolResult result = tool.execute(jsonCommand(command));
-
-        assertFalse(result.isSuccess());
-        assertTrue(result.getOutput().contains("does not accept arguments"), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Simple allowlisted commands are allowed")
-    void allowlistedSimpleCommandRuns() {
-        ShellRunTool tool = new ShellRunTool(tempDir, Duration.ofSeconds(5), 4096);
-
-        ToolResult result = tool.execute("{\"command\":\"echo hello\"}");
-
-        assertTrue(result.isSuccess(), result.getOutput());
-        assertTrue(result.getOutput().contains("hello"), result.getOutput());
-    }
-
-    @Test
-    @DisplayName("Non-interrupt execution failures do not interrupt current thread")
-    void nonInterruptExecutionFailureDoesNotInterruptThread() throws Exception {
-        Thread.interrupted();
-        Path fileInsteadOfDirectory = Files.writeString(tempDir.resolve("not-a-directory.txt"), "content");
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> new ShellRunTool(fileInsteadOfDirectory, Duration.ofSeconds(5), 4096));
-        assertFalse(Thread.currentThread().isInterrupted());
-    }
-
-    private boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("windows");
-    }
-
-    private String jsonCommand(String command) {
-        JsonObject object = new JsonObject();
-        object.addProperty("command", command);
-        return object.toString();
-    }
+ @TempDir Path root;
+ private String request(String script){JsonObject a=new JsonObject();a.addProperty("mode","script");a.addProperty("script",script);return a.toString();}
+ @Test void legacyAndInvalidFieldsNeverExecute() {
+  var tool=new ShellRunTool(root);
+  assertTrue(tool.execute("{\"command\":\"echo no\"}").getOutput().contains("LEGACY_COMMAND_UNSUPPORTED"));
+  for(String args:List.of("{\"mode\":\"exec\",\"executable\":\"java\",\"script\":\"x\"}","{\"mode\":\"script\",\"script\":\"x\",\"extra\":1}","{\"mode\":\"exec\",\"executable\":\"java\",\"args\":[null]}"))assertFalse(tool.execute(args).isSuccess());
+ }
+ @Test void noChannelNeverLaunches() {
+  assertEquals("APPROVAL_CHANNEL_UNAVAILABLE",assertThrows(ShellExecutionException.class,()->new ShellRunTool(root).execute(request("echo hello"))).getMessage());
+ }
+ @Test void cancellationIsNotOrdinaryFailure() {
+  var source=new CancellationSource();source.cancel();
+  assertThrows(OperationCancelledException.class,()->new ShellRunTool(root).execute(request("echo hello"),source.token()));
+ }
+ @Test void approvalBlocksThenRunsAndSavesBoundedResult()throws Exception {
+  var approval=new ApprovalCoordinator(true,e->{});var pool=Executors.newSingleThreadExecutor();
+  var context=new ToolExecutionContext(CancellationToken.none(),approval,root.resolve("output"),s->{});
+  try {
+   var waiting=pool.submit(()->new ShellRunTool(root).execute(request("echo hello"),context));
+   long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+   while(approval.pending().isEmpty() && System.nanoTime()<end)Thread.sleep(5);
+   assertFalse(waiting.isDone());assertFalse(Files.exists(root.resolve("output")));
+   assertTrue(approval.submit(approval.pending().orElseThrow().generation(),ApprovalCoordinator.Decision.ONCE));
+   var result=waiting.get(10,TimeUnit.SECONDS);assertTrue(result.isSuccess(),result.getOutput());
+   var data=JsonParser.parseString(result.getOutput()).getAsJsonObject();
+   assertTrue(data.get("output").getAsString().contains("hello"));assertTrue(data.get("output_saved").getAsBoolean());
+   assertTrue(Files.exists(Path.of(data.get("output_file").getAsString())));assertTrue(result.getOutput().length()<=8000);
+  } finally{approval.close();pool.shutdownNow();}
+ }
+ @Test void cleanupFailureTakesPrecedence() {
+  var cancelled=new OperationCancelledException();var cleanup=new ResourceCleanupException("still alive",()->{});cancelled.addSuppressed(cleanup);
+  assertSame(cleanup,assertThrows(ResourceCleanupException.class,()->ShellExecutor.checkCleanupFailure(cancelled)));
+ }
 }

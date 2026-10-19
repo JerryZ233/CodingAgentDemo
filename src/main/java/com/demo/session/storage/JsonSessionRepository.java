@@ -24,6 +24,8 @@ public class JsonSessionRepository implements SessionRepository {
         this.directory = Objects.requireNonNull(directory, "directory").toAbsolutePath().normalize();
     }
 
+    public Path directory() { return directory; }
+
     public static Path defaultDirectory() {
         return Path.of(System.getProperty("user.home"), ".coding-agent", "sessions");
     }

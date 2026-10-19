@@ -22,9 +22,9 @@ class TerminalIOTest {
         var writer = new PipedOutputStream(input);
         var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
         try (var terminal = new JLineTerminalIO(TerminalBuilder.builder().system(false).type("xterm")
-                .streams(input, output).build())) {
+                .streams(input, output).size(new org.jline.terminal.Size(80,24)).build())) {
             var reading = executor.submit(() -> terminal.readLine("edit > "));
-            assertTrue(prompt.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(prompt.await(3, java.util.concurrent.TimeUnit.SECONDS), () -> "Terminal output: " + bytes.toString(StandardCharsets.UTF_8) + "; reader done=" + reading.isDone());
             writer.write("hel".getBytes(StandardCharsets.UTF_8)); writer.flush();
             terminal.printAbove("background progress");
             writer.write("lo\n".getBytes(StandardCharsets.UTF_8)); writer.flush();
@@ -44,11 +44,11 @@ class TerminalIOTest {
         var input = new PipedInputStream();
         var writer = new PipedOutputStream(input);
         Terminal nativeTerminal = TerminalBuilder.builder().system(false).type("xterm")
-                .streams(input, output).build();
+                .streams(input, output).size(new org.jline.terminal.Size(80,24)).build();
         var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
         try (var terminal = new JLineTerminalIO(nativeTerminal)) {
             var reading = executor.submit(() -> terminal.readLine("test > "));
-            assertTrue(prompt.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(prompt.await(3, java.util.concurrent.TimeUnit.SECONDS), () -> "Terminal output: " + bytes.toString(StandardCharsets.UTF_8) + "; reader done=" + reading.isDone());
             nativeTerminal.raise(Terminal.Signal.INT);
             assertEquals(TerminalIO.Kind.INTERRUPT, reading.get(3, java.util.concurrent.TimeUnit.SECONDS).kind());
             writer.close();
@@ -73,16 +73,24 @@ class TerminalIOTest {
     }
     @Test void jlineDoesNotRequireClosingTaskQuotesAndHasScopedInterruptHandler() throws Exception {
         var output = new ByteArrayOutputStream();
+        var input = new PipedInputStream();
+        var writer = new PipedOutputStream(input);
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
         Terminal nativeTerminal = TerminalBuilder.builder().system(false).dumb(true).type(Terminal.TYPE_DUMB)
-                .streams(new ByteArrayInputStream("fix \"unfinished\n".getBytes(StandardCharsets.UTF_8)), output).build();
+                .streams(input, output).size(new org.jline.terminal.Size(80,24)).build();
         try (var terminal = new JLineTerminalIO(nativeTerminal)) {
-            assertEquals(TerminalIO.Input.line("fix \"unfinished"), terminal.readLine("> "));
+            var reading=executor.submit(()->terminal.readLine("quotes > "));
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+            while(!output.toString(StandardCharsets.UTF_8).contains("quotes > ") && System.nanoTime()<deadline)Thread.sleep(5);
+            assertTrue(output.toString(StandardCharsets.UTF_8).contains("quotes > "));
+            writer.write("fix \"unfinished\n".getBytes(StandardCharsets.UTF_8));writer.flush();
+            assertEquals(TerminalIO.Input.line("fix \"unfinished"), reading.get(3,java.util.concurrent.TimeUnit.SECONDS));
             AtomicInteger signals = new AtomicInteger();
             try (var registration = terminal.onInterrupt(signals::incrementAndGet)) {
                 nativeTerminal.raise(Terminal.Signal.INT);
                 assertEquals(1, signals.get());
             }
             terminal.printAbove("progress");
-        }
+        }finally{writer.close();executor.shutdownNow();}
     }
 }

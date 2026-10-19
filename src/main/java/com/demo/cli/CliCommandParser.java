@@ -20,12 +20,13 @@ public final class CliCommandParser {
                 if (!argument.isEmpty()) requireReference(argument);
                 yield new CliCommand.RetrySave(argument.isEmpty() ? null : argument);
             }
-            case "/sessions", "/history", "/status", "/cancel", "/help", "/exit", "/quit" -> {
+            case "/revoke", "/sessions", "/history", "/status", "/cancel", "/help", "/exit", "/quit" -> {
                 if (!argument.isEmpty()) throw new CliInputException(name + " 不接受参数");
                 yield switch (name) {
                     case "/sessions" -> new CliCommand.Sessions();
                     case "/history" -> new CliCommand.History();
                     case "/status" -> new CliCommand.Status();
+                    case "/revoke" -> new CliCommand.Revoke();
                     case "/cancel" -> new CliCommand.Cancel();
                     case "/help" -> new CliCommand.Help();
                     default -> new CliCommand.Exit();

@@ -29,6 +29,7 @@ public final class CliRenderer {
                 /history             查看对话历史
                 /status              查看会话及执行状态
                 /cancel              请求取消当前任务
+                /revoke              撤销当前任务的可复用命令授权
                 /retry-save [序号]   重试保存（省略序号保存当前会话，不会继续原任务）
                 /exit 或 /quit       关闭并退出
                 普通文本提交任务；// 转义任务开头的 /。
@@ -74,6 +75,8 @@ public final class CliRenderer {
     }
     public void event(SessionEvent event) {
         String text = switch (event.type()) {
+            case APPROVAL -> ((SessionEvent.Approval)event.payload()).kind().equals("invalidated")?"执行入口或目录已变化，需要重新审批。":null;
+            case COMMAND_OUTPUT -> "命令输出（任务数据）：\n│ "+((SessionEvent.CommandOutput)event.payload()).text().replace("\n","\n│ ");
             case RUN_STARTED -> null;
             case ITERATION_STARTED -> null;
             case LLM_REQUEST_STARTED -> "正在请求模型…";
@@ -90,11 +93,12 @@ public final class CliRenderer {
                 case "read_file" -> "正在读取文件…";
                 case "write_file" -> "正在写入文件…";
                 case "list_files" -> "正在查看目录…";
-                case "run_shell" -> "正在执行命令…";
+                case "run_shell" -> "正在准备命令…";
                 default -> "正在执行操作…";
             };
             case TOOL_RESULT -> {
                 var tool = (SessionEvent.ToolFinished) event.payload();
+                if("run_shell".equals(tool.name()))yield shellSummary(tool);
                 yield tool.result().isSuccess() ? writeSummary(tool) : "本次操作未成功，正在继续处理…";
             }
             case CANCEL_REQUESTED -> "已请求取消，等待当前操作及资源清理完成…";
@@ -108,6 +112,28 @@ public final class CliRenderer {
             }
         };
         if (text != null) terminal.printAbove(text);
+    }
+    private static String shellSummary(SessionEvent.ToolFinished tool) {
+        try {
+            var data=com.google.gson.JsonParser.parseString(tool.result().getOutput()).getAsJsonObject();
+            String status=data.has("status")?data.get("status").getAsString():"invalid";
+            String text=switch(status) {
+                case "exited" -> "命令已结束，退出码 "+data.get("exit_code").getAsInt()+"。";
+                case "timed_out" -> "命令执行超时，已停止并收集已有输出。";
+                case "output_limit_exceeded" -> "命令输出达到硬上限，已停止执行。";
+                case "output_read_failed" -> "命令输出读取失败，保留已有输出。";
+                case "cancelled" -> data.has("started") && !data.get("started").getAsBoolean()?"命令未启动：任务已取消。":"命令已取消，已完成的影响不会回滚。";
+                case "USER_DENIED" -> "命令未启动：用户拒绝。";
+                case "APPROVAL_CHANNEL_UNAVAILABLE" -> "命令未启动：当前终端不支持安全交互审批，请在交互控制台运行。";
+                case "APPROVAL_LIMIT_EXCEEDED" -> "已达到本轮命令审批次数上限，任务已停止。";
+                case "EXECUTION_LIMIT_EXCEEDED" -> "已达到本轮命令执行次数上限，任务已停止。";
+                case "START_FAILED" -> data.has("started") && data.get("started").getAsBoolean()?"命令启动初始化失败，可能已经产生影响。":"命令未启动：启动失败。";
+                default -> "命令未完成，正在处理执行结果。";
+            };
+            if(data.has("output_file"))text+="\n输出已保存："+data.get("output_file").getAsString();
+            if(data.has("output_save_error"))text+="\n输出文件保存失败。";
+            return text;
+        }catch(RuntimeException e){return "命令未启动或未完成，正在处理执行结果。";}
     }
     private static String writeSummary(SessionEvent.ToolFinished tool) {
         if (!"write_file".equals(tool.name())) return null;

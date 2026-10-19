@@ -55,6 +55,18 @@ public final class ToolArguments {
             default -> throw new IllegalArgumentException("arguments must be valid JSON");
         };
     }
+    public boolean has(String key) { return values.has(key); }
+    public List<String> strings(String key) {
+        if (!values.has(key)) return List.of();
+        JsonElement value = values.get(key);
+        if (!value.isJsonArray()) throw new IllegalArgumentException("Expected string array");
+        List<String> result = new ArrayList<>();
+        for (JsonElement item : value.getAsJsonArray()) {
+            if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) throw new IllegalArgumentException("Expected string array");
+            result.add(item.getAsString());
+        }
+        return List.copyOf(result);
+    }
     public String requiredString(String key) {
         String value = presentString(key);
         if (value.isBlank()) throw new IllegalArgumentException("missing required string argument '" + key + "'");

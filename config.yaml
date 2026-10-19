@@ -49,8 +49,16 @@ tools:
     - read_file
     - write_file
     - list_files
-    # Disabled by default. When enabled, run_shell is still limited to a
-    # small unchanged command allowlist, minimal process environment, bounded output,
-    # and blocks shell metacharacters; it cannot run builds/tests and is not
-    # an OS-level sandbox.
+    # Disabled by default. Each new exact plan requires interactive user approval.
+    # Runs as the current user, without an OS sandbox; foreground tasks only.
     # - run_shell
+  # shell:
+  #   aliases:
+  #     git: "C:/Program Files/Git/cmd/git.exe"
+  #   search_directories: ["C:/Windows/System32", "C:/Windows"]
+  #   profiles:
+  #     java:
+  #       environment:
+  #         JAVA_HOME: "C:/Program Files/Java/jdk-17"
+  #         PATH: "C:/Program Files/Java/jdk-17/bin;C:/Windows/System32;C:/Windows"
+  #       credentials: false

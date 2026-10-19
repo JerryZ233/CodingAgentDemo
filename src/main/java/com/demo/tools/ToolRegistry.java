@@ -38,7 +38,7 @@ public final class ToolRegistry {
         registerIfEnabled(registeredTools, "read_file", () -> new FileReadTool(workspaceRoot), config);
         registerIfEnabled(registeredTools, "write_file", () -> new FileWriteTool(workspaceRoot), config);
         registerIfEnabled(registeredTools, "list_files", () -> new FileListTool(workspaceRoot), config);
-        registerIfEnabled(registeredTools, "run_shell", () -> new ShellRunTool(workspaceRoot), config);
+        registerIfEnabled(registeredTools, "run_shell", () -> new ShellRunTool(workspaceRoot, config.getShellPolicy()), config);
 
         return new ToolRegistry(registeredTools);
     }

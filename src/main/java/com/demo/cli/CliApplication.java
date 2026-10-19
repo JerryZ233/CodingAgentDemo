@@ -54,6 +54,7 @@ public final class CliApplication {
             shutdown = new CliShutdownCoordinator(service, pump, terminal, renderer);
             if (hooks) shutdown.registerHook();
             CliController controller = new CliController(service, config.getWorkspacePath(), renderer, pump, shutdown);
+            controller.approvalChannel(terminal.supportsApprovals());
             controller.initialize(options);
             int code = 0;
             if (options.mode() == CliOptions.Mode.SINGLE_TASK) {
@@ -70,6 +71,13 @@ public final class CliApplication {
                     RunHandle handle = service.getActiveRun().orElse(null);
                     submitted.set(handle);
                     if (interrupted.get() && handle != null) handle.cancel();
+                    while(pump.active()!=null) {
+                        RunHandle foreground=pump.active();
+                        if(foreground==null)break;
+                        TerminalIO.Input input=terminal.readRunInput(foreground,true);
+                        if(input.kind()==TerminalIO.Kind.EOF){foreground.cancel();break;}
+                        controller.accept(input);
+                    }
                     RunEventPump.Outcome outcome = pump.await();
                     code = outcome.failure() != null ? 1 : switch (outcome.snapshot().lastRun().status()) {
                         case COMPLETED -> 0;
@@ -79,7 +87,10 @@ public final class CliApplication {
                 }
             } else {
                 while (controller.phase() != CliController.Phase.EXITING)
-                    controller.accept(terminal.readLine(controller.prompt()));
+                    {
+                    RunHandle handle=pump.active();
+                    controller.accept(handle!=null && terminal.supportsApprovals()?terminal.readRunInput(handle,false):terminal.readLine(controller.prompt()));
+                }
             }
             if (!shutdown.close()) code = 1;
             return code;

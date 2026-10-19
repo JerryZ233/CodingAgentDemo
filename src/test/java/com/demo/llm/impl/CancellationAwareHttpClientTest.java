@@ -73,10 +73,10 @@ class CancellationAwareHttpClientTest {
             server.createContext("/", exchange -> {
                 exchange.getRequestBody().readAllBytes();
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
-                boolean first = calls.incrementAndGet() == 1;
+                boolean first = calls.incrementAndGet() == 2; // First request warms SDK/class loading before timing cancellation.
                 try {
                     if (!first || sendHeaders) exchange.sendResponseHeaders(200, body.length);
-                    if (first) { arrived.countDown(); release.await(5, TimeUnit.SECONDS); }
+                    if (first) { arrived.countDown(); release.await(15, TimeUnit.SECONDS); }
                     if (first && !sendHeaders) exchange.sendResponseHeaders(200, body.length);
                     exchange.getResponseBody().write(body);
                 } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
@@ -86,19 +86,20 @@ class CancellationAwareHttpClientTest {
             server.start();
             try (var client = new OpenAICompatibleLLMClient("http://127.0.0.1:" + server.getAddress().getPort(),
                     "test-key", "test", 100, 0)) {
+                assertEquals("done",client.sendMessage(List.of(Message.user("warmup")),null).getText());
                 CancellationSource source = new CancellationSource();
                 var request = worker.submit(() -> client.sendMessage(List.of(Message.user("work")), null, source.token()));
-                assertTrue(arrived.await(3, TimeUnit.SECONDS));
+                assertTrue(arrived.await(10, TimeUnit.SECONDS), () -> "Local HTTP fixture did not receive the request; completed=" + request.isDone() + "; calls=" + calls.get());
                 source.cancel();
                 var error = assertThrows(java.util.concurrent.ExecutionException.class, () -> request.get(3, TimeUnit.SECONDS));
                 assertInstanceOf(OperationCancelledException.class, error.getCause());
                 assertEquals("done", client.sendMessage(List.of(Message.user("next")), null).getText());
-                assertEquals(2, calls.get());
+                assertEquals(3, calls.get());
                 CancellationSource alreadyCancelled = new CancellationSource();
                 alreadyCancelled.cancel();
                 assertThrows(OperationCancelledException.class,
                         () -> client.sendMessage(List.of(Message.user("not sent")), null, alreadyCancelled.token()));
-                assertEquals(2, calls.get());
+                assertEquals(3, calls.get());
             } finally {
                 release.countDown(); server.stop(0); handlers.shutdownNow(); worker.shutdownNow();
             }

@@ -14,6 +14,7 @@ public interface SessionService extends AutoCloseable {
     /** Errors in model execution are outcomes; storage failures throw and block further turns. */
     SessionSnapshot runTurn(String id, String message);
     RunHandle submitTurn(String id, String message);
+    default RunHandle submitTurn(String id, String message, RunOptions options) { return submitTurn(id,message); }
     Optional<RunHandle> getActiveRun();
     /** Repairs interrupted protocol blocks and saves without resuming the failed turn. */
     SessionSnapshot retrySave(String id);

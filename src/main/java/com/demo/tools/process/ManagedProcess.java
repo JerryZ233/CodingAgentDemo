@@ -21,14 +21,27 @@ final class ManagedProcess implements AutoCloseable {
     private volatile boolean outputFailed;
     private volatile boolean decodingError;
     private boolean truncated;
+    private volatile long observedBytes;
+    private volatile boolean outputLimitExceeded;
+    private final StringBuilder tail = new StringBuilder();
+    private int headBytes, tailBytes;
+    private boolean headFull;
+    private final java.util.function.Consumer<String> liveOutput;
+    private int liveBytes;
+
 
     ManagedProcess(ProcessBuilder builder, int limit) throws IOException { this(builder, limit, StandardCharsets.UTF_8); }
     ManagedProcess(ProcessBuilder builder, int limit, Charset charset) throws IOException {
         this(builder, limit, charset, java.util.function.UnaryOperator.identity());
     }
     ManagedProcess(ProcessBuilder builder, int limit, Charset charset, java.util.function.UnaryOperator<InputStream> input) throws IOException {
+        this(builder,limit,charset,input,text -> {});
+    }
+    ManagedProcess(ProcessBuilder builder, int limit, Charset charset, java.util.function.UnaryOperator<InputStream> input,
+                   java.util.function.Consumer<String> outputEvents) throws IOException {
         if (limit <= 0) throw new IllegalArgumentException("Output limit must be positive");
         this.limit = limit;
+        this.liveOutput=outputEvents;
         ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(task, "coding-agent-output"); thread.setDaemon(true); return thread;
         });
@@ -45,8 +58,19 @@ final class ManagedProcess implements AutoCloseable {
                 try { cleanupInitialization(started); }
                 catch (ResourceCleanupException e) { failure.addSuppressed(e); }
             }
+            if (started != null && !(failure instanceof Error)) {
+                InitializationFailure observed=new InitializationFailure(failure);
+                for(Throwable suppressed:failure.getSuppressed())observed.addSuppressed(suppressed);
+                throw observed;
+            }
             throw failure;
         }
+    }
+    static final class InitializationFailure extends IOException {
+        InitializationFailure(Throwable cause) { super("Process started but initialization failed",cause); }
+    }
+    Result stopAndCollect() throws InterruptedException {
+        requestStop(); finishReading(); return result(-1,false);
     }
     private static void cleanupInitialization(Process process) {
         boolean interrupted = Thread.interrupted();
@@ -72,7 +96,12 @@ final class ManagedProcess implements AutoCloseable {
         try (var channel = Channels.newChannel(input)) {
             boolean ended = false;
             while (!ended) {
-                ended = channel.read(bytes) == -1;
+                int count = channel.read(bytes);
+                ended = count == -1;
+                if (count > 0) {
+                    observedBytes += count;
+                    if (observedBytes >= 16L * 1024 * 1024) { outputLimitExceeded = true; requestStop(); }
+                }
                 bytes.flip();
                 while (true) {
                     CoderResult result = decoder.decode(bytes, chars, ended);
@@ -90,7 +119,7 @@ final class ManagedProcess implements AutoCloseable {
                 chars.flip(); append(chars); chars.clear();
                 if (result.isUnderflow()) break;
             }
-        } catch (IOException | RuntimeException e) { if (!stopping) outputFailed = true; }
+        } catch (IOException | RuntimeException e) { if (!stopping) { outputFailed = true; requestStop(); } }
     }
     Result await(Duration timeout, CancellationToken token) throws InterruptedException {
         if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("Timeout must be positive");
@@ -118,7 +147,7 @@ final class ManagedProcess implements AutoCloseable {
         catch (TimeoutException e) { throw new ResourceCleanupException("Command output reader did not finish", this::close); }
     }
     private Result result(int exit, boolean timedOut) {
-        return new Result(exit, output(), timedOut, outputFailed, decodingError);
+        return new Result(exit, output(), timedOut, outputFailed, decodingError, truncated, observedBytes, outputLimitExceeded);
     }
     private void observeDescendants() {
         process.toHandle().descendants().forEach(handle -> descendants.put(handle.pid(), handle));
@@ -156,14 +185,32 @@ final class ManagedProcess implements AutoCloseable {
         if (handle.isAlive()) handle.onExit().get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
     }
     private synchronized void append(CharBuffer chars) {
-        int accepted = Math.min(chars.remaining(), Math.max(0, limit - output.length()));
-        if (accepted < chars.remaining()) truncated = true;
-        for (int i = 0; i < accepted; i++) output.append(chars.get());
+        String chunk = chars.toString();
+        if (liveBytes < 32768) {
+            String event = chunk.substring(0, Math.min(chunk.length(), (32768-liveBytes)/4));
+            if (!event.isEmpty()) { liveBytes += event.getBytes(StandardCharsets.UTF_8).length; liveOutput.accept(event); }
+        }
+        // Count encoded bytes, and never split a surrogate pair at either truncation boundary.
+        int half = Math.max(0,(limit-32)/2), accepted=0;
+        while(!headFull && accepted<chunk.length()) {
+            int cp=chunk.codePointAt(accepted), size=utf8Size(cp);
+            if(headBytes+size>half){headFull=true;break;}
+            headBytes+=size;accepted+=Character.charCount(cp);
+        }
+        output.append(chunk,0,accepted);
+        if (accepted < chunk.length()) {
+            String rest=chunk.substring(accepted);tail.append(rest);tailBytes+=rest.getBytes(StandardCharsets.UTF_8).length;
+            int removed=0;
+            while(tailBytes>half && removed<tail.length()) {
+                int cp=tail.codePointAt(removed);tailBytes-=utf8Size(cp);removed+=Character.charCount(cp);
+            }
+            if(removed>0){tail.delete(0,removed);truncated=true;}
+        }
     }
+    private static int utf8Size(int cp){return cp<0x80?1:cp<0x800?2:cp<0x10000?3:4;}
     private synchronized String output() {
-        return output + (truncated ? System.lineSeparator() + "[output truncated]" : "")
-                + (decodingError ? System.lineSeparator() + "[output decoding replacement]" : "");
+        return output + (truncated && limit>=32 ? "\n[output truncated]\n" : "") + tail;
     }
     long pid() { return process.pid(); }
-    record Result(int exitCode, String output, boolean timedOut, boolean outputFailed, boolean decodingError) { }
+    record Result(int exitCode, String output, boolean timedOut, boolean outputFailed, boolean decodingError, boolean truncated, long observedBytes, boolean outputLimitExceeded) { }
 }

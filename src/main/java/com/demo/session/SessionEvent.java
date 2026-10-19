@@ -8,9 +8,11 @@ public record SessionEvent(String sessionId, String runId, long sequence, Instan
                            Type type, Payload payload) {
     public enum Type {
         RUN_STARTED, ITERATION_STARTED, LLM_REQUEST_STARTED, LLM_RETRY, LLM_FAILED, ASSISTANT_MESSAGE,
-        TOOL_STARTED, TOOL_RESULT, CANCEL_REQUESTED, RUN_FINISHED
+        TOOL_STARTED, TOOL_RESULT, APPROVAL, COMMAND_OUTPUT, CANCEL_REQUESTED, RUN_FINISHED
     }
-    public sealed interface Payload permits Progress, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public sealed interface Payload permits Approval, CommandOutput, Progress, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public record Approval(String kind) implements Payload { }
+    public record CommandOutput(String text) implements Payload { }
     public record ModelFailure(int iteration, com.demo.llm.LLMFailure failure) implements Payload { }
     public record Progress(int iteration) implements Payload { }
     public record AssistantMessage(int iteration, String text, boolean finalResponse) implements Payload { }

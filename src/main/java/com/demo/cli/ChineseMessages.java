@@ -23,6 +23,7 @@ final class ChineseMessages {
     }
     static String state(RunHandle.State state) {
         return switch (state) {
+            case WAITING_APPROVAL -> "等待命令批准";
             case STARTING -> "正在准备";
             case RUNNING -> "处理中";
             case CANCELLING -> "正在取消";

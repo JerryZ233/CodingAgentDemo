@@ -51,6 +51,10 @@ public interface Tool {
      */
     ToolResult execute(String args);
 
+    default ToolResult execute(String args, ToolExecutionContext context) {
+        return execute(args, context.token());
+    }
+
     /** Once admitted, short file operations finish and retain their actual result. */
     default ToolResult execute(String args, CancellationToken token) {
         token.throwIfCancellationRequested();

@@ -274,7 +274,7 @@ class OpenAICompatibleLLMClientTest {
         for (int i = 0; i < 3; i++) assertEquals(first, takeRequest().body());
 
         for (int i = 0; i < 6; i++) replies.add(new Reply(429, "{}", 0));
-        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+        try (var model = configuredClient(origin + "/v1", new RetryPolicy(5,2000,30000), (delay, token) -> { })) {
             var result = model.sendMessage(List.of(Message.user("hi")), null);
             assertEquals(LLMFailure.State.RETRIES_EXHAUSTED, result.getFailure().orElseThrow().state());
             assertEquals(6, result.getFailure().orElseThrow().attempt());
@@ -353,7 +353,7 @@ class OpenAICompatibleLLMClientTest {
         context.addUserMessage("write answer");
         context.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
         List<com.demo.agent.AgentEvent> events = new ArrayList<>();
-        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+        try (var model = configuredClient(origin + "/v1", new RetryPolicy(5,2000,30000), (delay, token) -> { })) {
             var result = new AgentLoop(model, Map.of("write_file", tool)).run(context,
                     com.demo.agent.AgentCheckpoint.noop(), CancellationToken.none(), events::add);
             assertEquals(recover, result.isCompleted());
@@ -387,7 +387,7 @@ class OpenAICompatibleLLMClientTest {
     @Test void timeoutCanRecoverWithoutWaitingInTest() {
         replies.add(new Reply(200, completion("{\"role\":\"assistant\",\"content\":\"late\"}"), 1200));
         replies.add(ok("{\"role\":\"assistant\",\"content\":\"recovered\"}"));
-        try (var model = configuredClient(origin + "/v1", RetryPolicy.DEFAULT, (delay, token) -> { })) {
+        try (var model = configuredClient(origin + "/v1", new RetryPolicy(5,2000,30000), (delay, token) -> { })) {
             assertEquals("recovered", model.sendMessage(List.of(Message.user("hi")), null).getText());
         }
         assertEquals(2, requestCount.get());

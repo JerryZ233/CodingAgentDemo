@@ -284,7 +284,7 @@ $env:CODING_AGENT_LOG_LEVEL = "INFO"
 | `read_file` | 是 | 读取工作目录内的文件 |
 | `write_file` | 是 | 创建或修改工作目录内的文件 |
 | `list_files` | 是 | 列出工作目录内的目录内容 |
-| `run_shell` | 否 | 在会话工作目录执行受限命令 |
+| `run_shell` | 否 | 用户批准后执行程序或显式脚本 |
 
 文件工具绑定会话的真实工作目录，检查输入、规范化路径和最终目标；工作区被替换后拒绝继续操作。`.env`、`.env.*`、`*.env`、`config.local.yaml`、私钥、证书容器及敏感目录受到保护，`.git` 禁止写入，同时保护原有系统关键目录。读取链接需验证最终目标；写入拒绝符号链接、目录联接等重解析路径。文件权限检查代替扩展名白名单，支持 `Dockerfile`、`.gitignore`、`.toml` 等正常 UTF-8 文本文件。
 
@@ -304,13 +304,55 @@ $env:CODING_AGENT_LOG_LEVEL = "INFO"
 
 ### 可选命令工具
 
-需要启用时，在 `tools.enabled` 中加入 `run_shell`。现有 `ShellPolicy` 规则保持不变，仅允许 `echo`、`dir`、`ls`、`pwd`、`cd`、`ping`、`sleep` 等少量命令；目录命令不接受参数，`ls -la` 也会拒绝。管道、重定向、命令串联等语法不受支持，不能自由运行构建、测试或 Git 命令。
+需要启用时，在 `tools.enabled` 中加入 `run_shell`。正式支持 Windows 与 Linux，支持 Git、构建、测试和解释器。所有新执行计划均需用户批准；不按程序名称放行。旧的 `{"command":"..."}` 参数停止接受，旧会话仍可读取但不会重放。
 
-工具从可信系统位置启动 Shell；CMD 禁用 AutoRun，PowerShell 禁用 profile 并非交互运行，POSIX 不继承 Shell 启动注入变量。子进程只接收必要系统环境，不继承应用 API Key、Token 等变量；标准输入立即关闭。`pwsh` 要求 Windows 标准安装位置 `Program Files/PowerShell/7/pwsh.exe` 可用，不从 PATH 搜索。
+普通程序使用 `exec`，参数数组直接传给进程，不展开变量、通配符或 Shell 元字符：
 
-默认执行超时 30 秒、输出保存上限 64 Ki 字符。超时保留已收集输出，普通输出读取错误不会报告成功。POSIX 与 `pwsh` 使用 UTF-8；Windows CMD/Windows PowerShell 使用 JVM 启动时的 `sun.stdout.encoding`，缺省采用 `native.encoding` 或 JVM 默认编码。非法字节替换为 U+FFFD，并附解码异常标记。
+```json
+{"mode":"exec","executable":"git","args":["status","--short"],"cwd":".","environment_profile":"default","timeout_ms":120000}
+```
 
-这些是程序内策略，不是 OS 沙箱或审批系统。工作目录不限制进程的文件访问和网络能力；Shell 内部命令解析、工作目录同名脚本、命令参数语义、系统级隔离和网络权限仍待 Shell 专项设计。进程清理覆盖观察到的后代，不保证捕获所有迅速脱离的进程。文件检查也无法完全消除恶意外部进程造成的路径竞态。
+需要管道、重定向或 Windows 批处理时显式使用 `script`。Windows 直接入口只接受 `.exe`，已知 Shell 入口也必须使用脚本模式：
+
+```json
+{"mode":"script","shell":"powershell","script":"& .\\gradlew.bat --no-daemon test; exit $LASTEXITCODE","environment_profile":"java","timeout_ms":300000}
+```
+
+Linux 可以直接执行 `./gradlew` 等有执行权限的项目脚本。项目入口必须显式指定路径。裸程序名仅搜索宿主冻结的可信绝对目录，排除相对、空目录和工作区目录。真实入口、文件身份和摘要在批准前固定，启动前再次复核。
+
+审批只展示当前命令，输入 **1（批准本次）/2（本轮允许相同命令）/3（拒绝）并回车**。空输入无默认选项，不接受聊天文字或模型输出作为批准。第二项只复用同一完整执行计划；项目源码、测试和构建文件可以改变，但入口、参数、目录、环境或资源设置改变后重新询问。参数引用的文件（如 `python script.py` 中的脚本）不追踪摘要。拒绝缓存只作用于当前任务。`/revoke` 撤销本轮可复用授权，Ctrl+C 或 `/cancel` 取消任务；任务结束或重启后授权全部销毁。
+
+只有主终端线程读取输入。审批不使用任务历史，暂存正在编辑的任务文本，并隔离已缓冲输入和粘贴内容。交互 CLI 和单任务 CLI 使用同一审批方式。无交互控制台、管道输入或普通行模式返回 `APPROVAL_CHANNEL_UNAVAILABLE`，不永久等待、不自动批准，也不提供 `--yes`。
+
+子进程使用最小环境，不继承应用 API Key、Token、HOME 或 Shell 启动注入变量，标准输入立即关闭。宿主可在启动配置中增加工具别名、可信目录和环境配置；模型只能选择名称。例如 Linux：
+
+```yaml
+tools:
+  enabled: [read_file, write_file, list_files, run_shell]
+  shell:
+    aliases:
+      git: /usr/bin/git
+    search_directories: [/usr/bin, /bin]
+    profiles:
+      java:
+        environment:
+          JAVA_HOME: /opt/jdk-17
+          PATH: /opt/jdk-17/bin:/usr/bin:/bin
+          HOME: /home/developer
+        credentials: false
+```
+
+Windows 配置使用实际安装位置，示例见 `config.yaml`。环境配置在最小默认环境基础上冻结，不继承完整父环境；包含凭据时须显式声明 `credentials: true`，界面只标注存在凭据，实际值参与内部授权匹配及脱敏。`shell_paths.pwsh` 可指定可信 PowerShell 7 路径；默认只配置系统 PowerShell/CMD 或 Linux sh/bash。不要将凭据提交进版本库。
+
+CMD 使用 `/d /s /v:off /c`，PowerShell 禁用 profile、非交互并使用 EncodedCommand，界面显示原始脚本；Bash 禁用 profile 和 rc。不自动修改脚本失败处理规则，返回实际进程退出码；PowerShell 调用原生程序应显式 `exit $LASTEXITCODE`。Windows 参数逐项编码后交给 Java 17 默认原生启动器，不拼接给 Shell；若宿主显式设置 `jdk.lang.Process.allowAmbiguousCommands=false`，直接执行模式明确失败。使用自定义命令行解析器的 Windows 程序仍可能有自身参数规则。
+
+默认执行超时 120 秒，最大请求 15 分钟，审批等待没有超时。每轮最多 20 次新审批、64 次执行；最多 128 项参数，程序与参数总计 8,192 个 UTF-16 字符，脚本最多 4,096 字符。只支持非交互前台任务，不提供 PTY、密码输入、后台服务器或持久任务管理。
+
+输出合并 stdout/stderr，保留有界开头和结尾（不超过 256 KiB），实际读取达到 16 MiB 时终止；每轮产物最多 16 MiB，实时正文每条命令最多 32 KiB，模型结果 JSON 不超过共享的 8,000 字符预算。截断明确标记，不能把预览当完整输出。保留输出位于会话存储根目录 `command-output/日期_时间-序号.txt`，不使用 UUID 目录或文件名。超时保留已收集输出，输出读取失败不报告成功。POSIX 与 pwsh 使用 UTF-8，Windows 其他入口使用 JVM 启动时的 native.encoding；非法字节替换并标记。
+
+输出旁的 `.metadata.json` 保存内部运行关联，不进入模型结果或终端正文；关联文件同样计入本轮产物预算。执行器启动前独立消费一次性许可并复核入口和目录，直接 Java 调用也不能绕过审批或重放已消费的许可。
+
+**这不是 OS 沙箱。** 命令以当前用户身份执行，可能访问工作区外文件和网络；cwd 检查不能限制程序权限，脚本和构建文件可间接执行其他命令。本轮不提供容器或网络隔离。进程清理覆盖观察到的后代，不能保证捕获迅速脱离的进程。路径与入口摘要检查不能完全消除恶意外部进程竞态，也不能实现跨进程的原子验证与执行。
 
 ### 工具代码组织
 
@@ -412,7 +454,7 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
     SessionSnapshot session = sessions.createSession(Path.of("G:/projects/example"));
     sessions.runTurn(session.id(), "创建 hello.txt，写入问候语");
     SessionSnapshot result = sessions.runTurn(session.id(), "读取 hello.txt，修改问候语");
-    System.out.println(session.id()); // 保存 ID，用于之后恢复
+    String storedSessionId = session.id(); // 仅供后端保存、恢复，不展示给用户
     System.out.println(result.lastRun().status());
 }
 ```
@@ -426,11 +468,14 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
 | `getSession(id)` | 读取不可变快照，必要时加载并执行中断恢复 |
 | `runTurn(id, text)` | 同步执行一轮，返回结束快照 |
 | `submitTurn(id, text)` | 异步提交，返回 `RunHandle` |
+| `submitTurn(id, text, RunOptions.interactive())` | 异步提交，由调用方负责响应审批或取消 |
 | `getActiveRun()` | 查询当前活动运行 |
 | `retrySave(id)` | 修复并重试保存，不重放工具 |
 | `close()` | 请求取消、保存并释放服务拥有的资源 |
 
 `RunHandle` 提供 `state()`、`eventsAfter(sequence)`、`completion()` 和 `cancel()`。前端从 `eventsAfter(0)` 开始，持续用最后的事件序号增量读取，完成时再排空剩余事件。事件仅保留在句柄内存中，不会跨重启恢复。
+
+同步 `runTurn` 与未声明审批渠道的异步调用不等待审批，Shell 请求以 `TOOL_ERROR` 结束。交互客户端显式传入 `RunOptions.interactive()` 后，轮询 `pendingApproval()` 获取唯一当前请求，以安全的输入边界展示真实计划，再通过 `submitApproval(generation, decision)` 提交 `ONCE`、`THIS_TURN` 或 `DENY`。`generation` 仅在前后端内部传递，不打印给用户。`revokeApprovals()` 清除本轮可复用授权。`WAITING_APPROVAL` 是实时状态，持久摘要仍为 `RUNNING`；审批事件、授权及拒绝记录均不跨任务或重启恢复。审批期间不占用会话服务锁，状态查询和 `cancel()` 仍然可用。
 
 取消必须调用 `cancel()`，取消 `completion()` 转换得到的 Future 副本不会取消任务。普通取消返回状态为 `CANCELLED` 的快照；保存或资源清理失败会异常完成。模型错误和迭代上限则保存在运行结果中。
 

@@ -33,6 +33,26 @@ public final class LogData {
         text = SENSITIVE.matcher(text).replaceAll("$1\"[redacted]\"");
         return JSON.toJson(text);
     }
+    public static String redact(String text) {
+        return com.google.gson.JsonParser.parseString(quote(text)).getAsString();
+    }
+    public static int longestSecret() { return SECRETS.stream().mapToInt(String::length).max().orElse(0); }
+    /** A line boundary that cannot split a known secret, including multiline values. */
+    public static int safeOutputBoundary(String text) {
+        int candidate=text.length()-longestSecret();
+        int cut=candidate<=0?0:text.lastIndexOf('\n',candidate-1)+1;
+        boolean changed;
+        do {
+            changed=false;
+            for(String secret:SECRETS) {
+                int start=text.indexOf(secret,Math.max(0,cut-secret.length()+1));
+                if(start>=0 && start<cut && start+secret.length()>cut) {
+                    cut=text.lastIndexOf('\n',start-1)+1;changed=true;
+                }
+            }
+        }while(changed && cut>0);
+        return cut;
+    }
     public static String exception(Throwable failure) {
         StringWriter text = new StringWriter();
         failure.printStackTrace(new PrintWriter(text));

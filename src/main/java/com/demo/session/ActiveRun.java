@@ -16,38 +16,55 @@ final class ActiveRun implements RunHandle {
     final CountDownLatch drained = new CountDownLatch(1);
     final RunEventBuffer events;
     private final CompletableFuture<SessionSnapshot> result = new CompletableFuture<>();
-    private State state = State.STARTING;
+    private final java.util.concurrent.atomic.AtomicReference<State> state = new java.util.concurrent.atomic.AtomicReference<>(State.STARTING);
+    final com.demo.tools.process.ApprovalCoordinator approvals;
+    public java.util.Optional<com.demo.tools.process.ApprovalCoordinator.PendingApproval> pendingApproval() { return approvals.pending(); }
+    public boolean submitApproval(long generation, com.demo.tools.process.ApprovalCoordinator.Decision decision) {
+        if (cancellation.token().isCancellationRequested() || state.get()==State.FINISHED || state.get()==State.FINISHING) return false;
+        return approvals.submit(generation,decision);
+    }
+    public void revokeApprovals() { approvals.revoke(); }
+
 
     ActiveRun(String sessionId, Clock clock) {
+        this(sessionId, clock, RunOptions.defaults());
+    }
+    ActiveRun(String sessionId, Clock clock, RunOptions options) {
         this.sessionId = sessionId;
         events = new RunEventBuffer(sessionId, id, clock);
+        approvals = new com.demo.tools.process.ApprovalCoordinator(options.approvalChannelAvailable(), event -> {
+            if (event.kind().equals("requested") && !cancellation.token().isCancellationRequested()) state.compareAndSet(State.RUNNING, State.WAITING_APPROVAL);
+            else state.compareAndSet(State.WAITING_APPROVAL,State.RUNNING);
+            events.append(SessionEvent.Type.APPROVAL, new SessionEvent.Approval(event.kind()));
+        });
         events.append(SessionEvent.Type.RUN_STARTED, new SessionEvent.Progress(0));
     }
 
     public String sessionId() { return sessionId; }
     public String runId() { return id; }
-    public synchronized State state() { return state; }
+    public synchronized State state() { return state.get(); }
     public CompletionStage<SessionSnapshot> completion() { return result.minimalCompletionStage(); }
     public List<SessionEvent> eventsAfter(long sequence) { return events.after(sequence); }
 
     public synchronized CancelResult cancel() {
-        if (state == State.FINISHED) return CancelResult.ALREADY_FINISHED;
-        if (state == State.FINISHING) return CancelResult.TOO_LATE;
-        if (state == State.CANCELLING) return CancelResult.ALREADY_REQUESTED;
+        if (state.get() == State.FINISHED) return CancelResult.ALREADY_FINISHED;
+        if (state.get() == State.FINISHING) return CancelResult.TOO_LATE;
+        if (state.get() == State.CANCELLING) return CancelResult.ALREADY_REQUESTED;
         // The token flag and cancellation event are linearized against step admission.
         cancellation.cancel(() -> {
-            state = State.CANCELLING;
+            state.set(State.CANCELLING);
             com.demo.logging.Logging.logger(ActiveRun.class).info("Cancellation requested session_id={} run_id={}", sessionId, id);
             events.append(SessionEvent.Type.CANCEL_REQUESTED, new SessionEvent.Progress(0));
         });
+        approvals.close();
         return CancelResult.REQUESTED;
     }
 
-    synchronized void running() { if (state == State.STARTING) state = State.RUNNING; }
+    synchronized void running() { if (state.get() == State.STARTING) state.set(State.RUNNING); }
 
     synchronized boolean beginFinishing() {
-        boolean cancelled = state == State.CANCELLING;
-        state = State.FINISHING;
+        boolean cancelled = cancellation.token().isCancellationRequested();
+        state.set(State.FINISHING);
         return cancelled;
     }
 
@@ -76,7 +93,8 @@ final class ActiveRun implements RunHandle {
         String diagnostic = run.status() == SessionRun.Status.COMPLETED ? null : run.message();
         events.append(SessionEvent.Type.RUN_FINISHED,
                 new SessionEvent.RunFinished(run.status(), run.iterations(), snapshot.unsaved(), diagnostic));
-        state = State.FINISHED;
+        approvals.close();
+        state.set(State.FINISHED);
     }
 
     void publishCompletion(SessionSnapshot snapshot, Throwable failure) {

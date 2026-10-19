@@ -36,6 +36,8 @@ public final class Config {
     private final String provider;
     private final RetryPolicy retryPolicy;
     private final boolean errorDetails;
+    private final com.demo.tools.process.ShellPolicyConfig shellPolicy;
+    public com.demo.tools.process.ShellPolicyConfig getShellPolicy() { return shellPolicy; }
 
     public Config(
             String apiUrl,
@@ -53,6 +55,12 @@ public final class Config {
     public Config(String apiUrl, String model, String apiKey, int maxTokens, double temperature,
                   int maxIterations, String workspaceDir, Set<String> enabledTools,
                   String provider, RetryPolicy retryPolicy, boolean errorDetails) {
+        this(apiUrl,model,apiKey,maxTokens,temperature,maxIterations,workspaceDir,enabledTools,provider,retryPolicy,errorDetails,com.demo.tools.process.ShellPolicyConfig.defaults());
+    }
+    public Config(String apiUrl, String model, String apiKey, int maxTokens, double temperature,
+                  int maxIterations, String workspaceDir, Set<String> enabledTools,
+                  String provider, RetryPolicy retryPolicy, boolean errorDetails, com.demo.tools.process.ShellPolicyConfig shellPolicy) {
+        this.shellPolicy = Objects.requireNonNull(shellPolicy);
         this.apiUrl = requireText(apiUrl, "apiUrl");
         this.model = requireText(model, "model");
         this.apiKey = apiKey == null ? "" : apiKey;

@@ -8,6 +8,7 @@ public sealed interface CliCommand {
     record Sessions() implements CliCommand {}
     record History() implements CliCommand {}
     record Status() implements CliCommand {}
+    record Revoke() implements CliCommand {}
     record Cancel() implements CliCommand {}
     record Help() implements CliCommand {}
     record Exit() implements CliCommand {}
