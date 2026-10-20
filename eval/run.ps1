@@ -41,7 +41,7 @@ try {
     }
     $buildTimer = [Diagnostics.Stopwatch]::StartNew()
     if (!$SkipBuild) {
-        Invoke-Docker -Arguments @('build', '-f', 'eval/docker/agent.Dockerfile', '-t', 'coding-agent-eval-base:local', '.')
+        & (Join-Path $PSScriptRoot 'build-agent.ps1')
         foreach ($name in $taskNames) {
             Invoke-Docker -Arguments @('build', '-f', "eval/tasks/$name/environment/Dockerfile", '-t', "coding-agent-eval-$name`:local", "eval/tasks/$name/environment")
             Invoke-Docker -Arguments @('build', '-f', "eval/tasks/$name/tests/Dockerfile", '-t', "coding-agent-verifier-$name`:local", 'eval')

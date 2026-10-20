@@ -43,6 +43,28 @@ $env:LLM_API_KEY = '你的密钥'
 
 默认使用与项目一致的 DeepSeek 接口和模型；独立配置在 `eval/config.yaml`。用 `-LocalConfig config.local.yaml` 可显式读取本地模型配置：文件只读挂载到编排容器，不进入镜像和结果目录，只提取 `llm` 中的模型字段，不带入宿主工作目录及工具路径。优先级为环境变量、本地配置、评测默认配置。环境变量可覆盖 `LLM_API_URL`、`LLM_MODEL`、`LLM_PROVIDER`、`LLM_MAX_TOKENS`、`LLM_TEMPERATURE`、`LLM_MAX_RETRIES`、`AGENT_MAX_ITERATIONS`。容器访问宿主模型服务时，URL 中使用 `host.docker.internal`，不能使用宿主机的 `localhost`。
 
+### 镜像构建缓存与 Maven 下载失败
+
+`run.ps1` 通过 `build-agent.ps1` 构建 Agent 基础镜像。默认从宿主 `GRADLE_USER_HOME`（未设置时为 `%USERPROFILE%/.gradle`）复制已完成的当前 Gradle 发行版、依赖制品和模块元数据，并用独立命名构建上下文只读挂载。不会复制 `gradle.properties`、初始化脚本、凭据、daemon 状态或锁文件。临时副本位于被 Git 忽略的 `build/eval-gradle-seed/`，构建后清理；宿主缓存本身不修改。
+
+镜像构建使用 BuildKit 持久缓存，先尝试离线 `installDist`；缓存不足时最多执行三次在线构建。失败时已下载的内容仍留在构建缓存中，源码变化不再导致发行版和依赖全部重新下载。重试仅限构建，不会重新运行 Harbor 或模型任务。TLS 验证始终保留。
+
+可以单独检查构建，不启动 Harbor，也不调用模型：
+
+```powershell
+# 使用宿主缓存，禁止 Gradle 发行版和依赖的在线回退
+.\eval\build-agent.ps1 -Offline
+
+# 默认先离线，缓存不足时允许在线构建
+.\eval\build-agent.ps1
+
+# 指定其他缓存目录，或不导入宿主缓存（仍复用 BuildKit 缓存）
+.\eval\build-agent.ps1 -GradleUserHome D:\gradle-cache
+.\eval\build-agent.ps1 -NoHostCache
+```
+
+`-Offline` 仅限制 Gradle 下载；Docker 获取基础镜像、运行时系统包和 JUnit 仍需要网络或已有镜像层缓存。若没有缓存的 Gradle 发行版或依赖，离线构建会明确失败，不会偷偷转为联网下载。Maven TLS 握手失败时，可先在网络正常的宿主完成普通 Gradle 构建，再使用上述缓存路径。不要禁用证书校验。
+
 每次运行创建独立结果目录。退出码：`0` 全部任务通过；`1` 存在未通过任务；`2` 启动或编排失败。`-SkipBuild` 复用镜像，必须已经构建过本次选中的所有任务。报告记录实际镜像 ID；工作区源码摘要不代表复用镜像里的源码版本。
 
 ## 运行过程
