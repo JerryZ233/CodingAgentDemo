@@ -18,6 +18,7 @@ final class Session {
     boolean unsaved;
     com.demo.memory.SessionMemoryState memoryState;
     volatile SessionSnapshot published;
+    SessionSnapshot persisted;
 
     Session(SessionSnapshot snapshot) {
         id = snapshot.id();

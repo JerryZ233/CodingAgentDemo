@@ -10,13 +10,14 @@
 - 阶段 1：已完成稳定消息 ID、v2 会话、内容版本、整理标记和项目定位，本地回归通过。
 - 阶段 2：已完成 Markdown 条目、增量历史、本地版本/事务、文件锁、会话条件检查点与中断恢复，本地回归通过。
 - 阶段 3：已实现协议块、Token 估算、统一组装、请求前准备入口和上下文受阻结果；验证结果见下方阶段 3 交接。
-- 阶段 4～8：尚未实现。
-- Memory 改造尚未创建提交；以当前工作区差异为准。
+- 阶段 4：已实现无工具摘要、自动增量压缩、超长来源分片、运行时提交协调与请求用途；验证结果见下方阶段 4 交接。
+- 阶段 5～8：尚未实现。
+- 阶段 0～3 已本地提交为 `5a22d45`（Implement memory foundations and unified context budgeting），未 push。阶段 4 修改保留在工作区。
 
 ## 当前接口与格式
 
 - `Config.getMemory()` 返回不可变 `MemoryConfig`，旧构造入口仍可用；`withMemory` 方便测试注入。
-- 默认 `memory.enabled=false`，保留旧窗口行为。开启后只读加载有效长期条目与已提交连续摘要，对全部模型输入统一估算并拒绝超限；自动压缩、提炼与后台整理仍未接入。
+- 默认 `memory.enabled=false`，保留旧窗口行为。开启后加载有效长期条目与已提交连续摘要，统一估算并自动压缩较早消息；完整输入仍超限时暂停。长期提炼与后台整理尚未接入。
 - `Message.getId()` 提供内部 UUID，`copyOf`/`withContent` 保留；`withId` 用于显式恢复。现有模型 mapper 不发送该字段。
 - 会话写版本 2，读版本 1/2。版本 1 ID 使用 `coding-agent:v1:<sessionId>:<ordinal>` 的 UTF-8 字节生成 name UUID，后续必须保持此算法兼容。
 - `SessionSnapshot` 新增 `contentRevision` 和 `memoryState`，旧构造入口以消息数初始化版本。
@@ -38,7 +39,7 @@
 
 ## 下一阶段
 
-从阶段 4 接续：无工具结构化摘要、增量压缩、连续摘要事务与请求用途标记。沿用阶段 3 的 `ContextPreparation` 请求前入口；提交后必须协调更新运行中 Session/Context，不能仅写磁盘。保持默认关闭。
+从阶段 5 接续：历史搜索/读取服务及 `memory_search`、`memory_read` 工具。只搜索当前项目的已提交历史，默认 5 条、最多 10 条，有界读取；项目身份由宿主注入，工具参数不能指定任意路径。保持默认关闭。
 
 ## 阶段 2 存储交接
 
@@ -70,3 +71,20 @@
 - 最终使用 JDK 17 执行 `gradlew.bat --offline --no-daemon test`：371 项，366 通过、5 跳过、0 失败/错误。`git diff --check` 通过。
 - 普通沙箱无法写用户 Gradle 缓存锁，使用授权的现有缓存运行离线检查。未运行真实模型 API、Docker/Harbor 或创建 Git 提交。
 - 工作期间评测策略/指标及临时 test/ 删除出现独立提交，未回退这些改动；当前 Memory 源码与文档仍留在工作区。
+
+## 阶段 4 压缩交接
+
+- 详细接口、输出结构、失败与取消语义见 [MEMORY_COMPACTION.md](MEMORY_COMPACTION.md)。
+- `MemoryHarness` 保留只读 preparation 重载；Service 使用运行时重载，注入 `MemoryModel`、`SessionArchiveAccess`、时钟和进度回调。自动压缩不占编码迭代次数。
+- `CompactionPlanner` 选择连续旧前缀，保留最近完整块及最新用户请求；本轮工具观察可使下一次准备触发压缩。受保护内容自身超限时暂停，不绕过前缀边界。
+- `MemoryModel` 使用当前模型/客户端、无工具 schema、版本化提示和严格结构。校验六类连续摘要小节、归档摘要、来源及预算；不合法最多修复一次，不执行返回的工具。API 失败和取消不进入格式修复。
+- 超长来源按消息 ID/字符偏移分片，保持 Unicode 代理对完整；逐片请求计入完整预算并携带累计摘要。完整批次成功前不推进覆盖边界。
+- `SessionArchiveCoordinator` 在归档后更新正在运行的 Session 的记忆状态和已保存快照，不替换 Context。部分提交通过读取自己的检查点、补交 history 标记恢复；其他进程修改不能作为本次成功结果采用。
+- 开启记忆时，普通检查点也以 `Session.persisted` 作为 CAS 前置版本，避免最终保存覆盖新摘要或外部修改。自定义仓库需实现 `compareAndSave`，否则明确报存储失败。
+- `ArchiveCommitter.recover(sessionId)` 只处理指定会话的提交标记。原无参数入口保留用于显式存储恢复。
+- `RequestPurpose` 含 AGENT/COMPACTION/CONSOLIDATION；兼容旧函数式客户端。每次 SDK 请求尝试及重试记录用途，不向服务商请求体发送用途，不使用客户端共享可变用途字段。
+- CLI 增加简短压缩阶段提示，不将内部摘要或错误写入原始对话。压缩失败仅在重新校验的完整输入仍可容纳时回退，否则返回 `COMPACTION_FAILED` 上下文受阻。
+- 默认仍关闭，无长期提炼、检索工具、后台回填或退出时额外调用。当前修改未再次提交，未 push。
+- 验证：第四阶段专项回归通过；最终 JDK 17 的 `gradlew.bat --offline --no-daemon test` 共 387 项，382 通过、5 跳过、0 失败/错误。本地 Python `python -m unittest discover -s eval -p 'test_*.py' -v` 共 13 项全部通过。
+- 专项首轮两项回退用例误将已经超出总预算的输入当作可容纳输入，依据实际系统提示/schema 开销修正测试边界后通过。全量首轮的两项并行新增评测配置测试遇到 Linux 路径在 Windows 上校验的问题；其源码已有平台适配，按当前源码重新编译后全量通过，未改动或回退这些评测工作。
+- `git diff --check` 通过。未调用真实模型 API，未运行 Docker/Harbor 评测。

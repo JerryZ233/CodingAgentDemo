@@ -210,7 +210,11 @@ public final class DefaultSessionService implements SessionService {
         worker = Thread.currentThread();
         Throwable failure = null;
         if (memoryHarness != null) session.context.setPreparation(memoryHarness.preparation(
-                session.id, session.workspace, () -> session.memoryState));
+                session.id, session.workspace, () -> session.memoryState,
+                new SessionArchiveCoordinator(session, repository),
+                new com.demo.memory.MemoryModel(client, config.getMemory(), config.getMaxTokens()), clock,
+                phase -> run.events.append(SessionEvent.Type.MEMORY_COMPACTION, new SessionEvent.MemoryCompaction(phase)),
+                failureInfo -> run.progress(com.demo.agent.AgentEvent.llmRetry(0, failureInfo))));
         if (session.context.getMessages().isEmpty()) session.title = titleFor(message);
         session.lastRun = SessionRun.started(run.runId(), now(session));
         session.context.addUserMessage(message);
@@ -362,6 +366,7 @@ public final class DefaultSessionService implements SessionService {
         log.info("Session restored session_id={} workspace={}", id, com.demo.logging.LogData.quote(stored.workspace()));
         if (restored.changed()) log.warn("Interrupted session recovered without replay session_id={}", id);
         Session session = new Session(restored.snapshot());
+        session.persisted = stored;
         sessions.put(id, session);
         if (restored.changed()) persist(session);
         return session;
@@ -374,13 +379,18 @@ public final class DefaultSessionService implements SessionService {
     private void persist(Session session) {
         session.unsaved = true;
         try {
-            repository.save(session.publish());
+            if (memoryHarness != null && session.persisted != null) repository.compareAndSave(session.persisted, session.publish());
+            else repository.save(session.publish());
+        } catch (UnsupportedOperationException unsupported) {
+            throw new SessionStorageException(SessionStorageException.Reason.IO_FAILURE,
+                    "Memory-enabled sessions require conditional checkpoints", unsupported);
         } catch (RuntimeException e) {
             log.error("Checkpoint save failed session_id={} exception={}", session.id, com.demo.logging.LogData.exception(e));
             throw e;
         }
         session.unsaved = false;
         session.publish();
+        session.persisted = session.published;
         log.debug("Checkpoint saved session_id={}", session.id);
     }
     private Instant now(Session session) {

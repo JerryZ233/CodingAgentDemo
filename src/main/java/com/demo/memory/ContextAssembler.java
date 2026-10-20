@@ -37,7 +37,7 @@ public final class ContextAssembler {
         Message system = Message.system((systemPrompt == null ? "" : systemPrompt) + POLICY);
         Message global = section("Global long-term memory", globalMemory);
         Message project = section("Project long-term memory", projectMemory);
-        Message summary = section("Current session continuation summary", compression.continuationSummary());
+        Message summary = summaryMessage(compression.continuationSummary());
         List<Message> recent = raw.subList(covered, raw.size());
         long largest = recentBlocks.stream().mapToLong(block -> estimator.messages(block.messages())).max().orElse(0);
         var report = budget.inspect(estimator.message(system), estimator.tools(toolsDescription),
@@ -55,6 +55,10 @@ public final class ContextAssembler {
     private static Message section(String label, String text) {
         return text == null || text.isBlank() ? null
                 : Message.user("[Recorded background: " + label + "]\n" + text + "\n[End recorded background]");
+    }
+
+    public static Message summaryMessage(String text) {
+        return section("Current session continuation summary", text);
     }
 
     private long cost(Message message) { return message == null ? 0 : estimator.message(message); }

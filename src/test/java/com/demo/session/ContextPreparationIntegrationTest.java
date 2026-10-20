@@ -119,7 +119,7 @@ class ContextPreparationIntegrationTest {
         assertEquals(1, calls.get());
     }
 
-    @Test void uncommittedSummaryBlocksWithoutDeletingRawHistoryOrReplayingOperations() throws Exception {
+    @Test void uncommittedSummaryIsRecoveredBeforeRequestWithoutReplayingOldOperations() throws Exception {
         var sessions = repository();
         var original = stored(sessions, temp.toRealPath(), List.of(Message.user("must remain"), Message.assistant("old")));
         var history = new HistoryRepository(temp.resolve(".coding-agent"));
@@ -129,14 +129,20 @@ class ContextPreparationIntegrationTest {
         assertThrows(IllegalStateException.class, () -> crashing.commit(original, entry(original, 0, 2, "summary"), now));
         var before = sessions.load(original.id());
         assertTrue(history.read().entries().isEmpty());
-        LLMClient never = (messages, tools) -> { fail("Must not send an unverified summary"); return null; };
-        try (var service = service(enabled(), never, sessions)) {
+        var requests = new AtomicInteger();
+        LLMClient model = (messages, tools) -> {
+            requests.incrementAndGet();
+            assertEquals(1, history.read().entries().size());
+            assertFalse(messages.stream().anyMatch(message -> "must remain".equals(message.getContent())));
+            return new LLMClient.LLMResponse("done", null);
+        };
+        try (var service = service(enabled(), model, sessions)) {
             var result = service.runTurn(original.id(), "continue");
-            assertEquals(SessionRun.Status.CONTEXT_BLOCKED, result.lastRun().status());
-            assertTrue(result.lastRun().message().contains("UNCOMMITTED_SUMMARY"));
+            assertEquals(SessionRun.Status.COMPLETED, result.lastRun().status());
             assertEquals(before.memoryState(), result.memoryState());
-            assertEquals(3, result.messages().size());
+            assertEquals(4, result.messages().size());
             assertEquals("must remain", result.messages().get(0).getContent());
+            assertEquals(1, requests.get());
         }
     }
 

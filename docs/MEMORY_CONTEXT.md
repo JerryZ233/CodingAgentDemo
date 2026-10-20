@@ -1,6 +1,6 @@
 # 上下文组装与预算（阶段 3）
 
-默认 `memory.enabled=false`，保持旧的字符数/消息数窗口。显式开启后，`DefaultSessionService` 为每个前台会话注入只读 `MemoryHarness`。此阶段不生成摘要、不提炼知识、不扫描旧会话，也不增加模型请求。
+默认 `memory.enabled=false`，保持旧的字符数/消息数窗口。显式开启后，`DefaultSessionService` 为每个前台会话注入 `MemoryHarness`。本文描述阶段 3 的组装接口；阶段 4 已加入自动压缩，详见 [压缩说明](MEMORY_COMPACTION.md)。直接使用只读 preparation 重载时仍不会生成摘要或写记忆。
 
 ## 请求链路
 
@@ -30,7 +30,7 @@ CodingAgent 设置工具规格
 - 输入限额、输出预留、安全余量、总窗口、压缩触发与目标阈值。
 - 分层超限、总输入超限及单块无法容纳的检查结果。
 
-每个分项计入其实际消息标签与封装开销；输入总量另外加请求开销。输入硬限额为 `context_window_tokens - safety_margin_tokens - llm.max_tokens`。达到触发阈值只标记 `compactionRecommended`，阶段 3 在仍能完整容纳时继续发送；只有超过硬限额或分层限额才拒绝。阶段 4 接入自动压缩。
+每个分项计入其实际消息标签与封装开销；输入总量另外加请求开销。输入硬限额为 `context_window_tokens - safety_margin_tokens - llm.max_tokens`。组装器只标记 `compactionRecommended`；运行时 Harness 在触发后执行压缩，再由同一组装器重新验证。硬限额或分层限额不因压缩失败而放宽。
 
 启用后不再经过旧的 100 条/64,000 字符窗口和单消息 8,000 字符裁剪；保留工具自身的输出限制。不能容纳时返回 `CONTEXT_BLOCKED`，保存用户消息和运行结果，不把诊断追加成助手消息，也不发送模型请求。
 
@@ -55,7 +55,7 @@ Harness 使用摘要前检查 `HistoryRepository.read()` 返回的已提交历�
 - 当前摘要正文、覆盖边界、内容版本和压缩版本与链一致。
 - 从最早归档到当前归档的消息 ID 串联后，正好等于原始消息的已覆盖前缀。
 
-这一步只读。出现“会话检查点已保存但提交标记未写”的中断状态时拒绝使用摘要；显式存储恢复后才能继续。阶段 4 须在运行协调入口接入恢复，不能在此处偷偷写磁盘或覆盖内存 Context。
+该校验只读。出现“会话检查点已保存但提交标记未写”的中断状态时拒绝直接使用摘要；阶段 4 通过独立运行协调入口恢复本会话提交标记，再重新校验，不在纯组装器中写磁盘或替换内存 Context。
 
 ## 可观察性与后续接入
 
@@ -63,6 +63,6 @@ Harness 使用摘要前检查 `HistoryRepository.read()` 返回的已提交历�
 - `Context.getLastBudgetReport()` 返回最近一次成功或预算拒绝的报告；无报告的失败会清除旧报告，避免显示过期数据。
 - `CONTEXT_BLOCKED` 是独立的 Agent/Session 结果，CLI 有中文状态和保留消息提示；单任务模式返回失败退出码。
 - 测试/嵌入应用通过 `DefaultSessionService` 的显式 Harness 注入入口指定隔离全局目录，不应读写真实用户记忆。
-- 阶段 4 可扩展 `ContextPreparation`：先估算、归档并协调更新内存状态，再重新组装；准备与模型请求必须使用同一取消信号。当前 Harness 不包含模型客户端，不会自行触发付费调用。
+- 阶段 4 的运行 preparation 重载接收 `MemoryModel` 与 `SessionArchiveAccess`：先估算、归档并协调更新内存状态，再重新组装；准备与模型请求使用同一取消信号。纯组装和只读重载不发起模型请求。
 
 普通离线回归使用 `gradlew.bat --offline --no-daemon test`。真实模型测试须遵循根目录 `AGENTS.md` 的显式授权规则。

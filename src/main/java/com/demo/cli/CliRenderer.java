@@ -80,6 +80,11 @@ public final class CliRenderer {
             case RUN_STARTED -> null;
             case ITERATION_STARTED -> null;
             case CONTEXT_PREPARED -> null; // Available to service consumers; do not clutter terminal progress.
+            case MEMORY_COMPACTION -> switch (((SessionEvent.MemoryCompaction) event.payload()).phase()) {
+                case STARTED -> "正在整理较早的会话，保留当前要求与未解决问题…";
+                case COMPLETED -> "会话摘要已保存。";
+                case FAILED -> "本次会话整理未成功；仅在完整上下文仍能容纳时继续。";
+            };
             case LLM_REQUEST_STARTED -> "正在请求模型…";
             case LLM_RETRY -> {
                 var failure = ((SessionEvent.ModelFailure) event.payload()).failure();

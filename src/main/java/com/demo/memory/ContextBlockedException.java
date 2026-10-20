@@ -4,7 +4,7 @@ import java.util.Optional;
 
 /** Expected preparation outcome, never appended as an assistant transcript message. */
 public final class ContextBlockedException extends RuntimeException {
-    public enum Reason { BUDGET_EXCEEDED, INVALID_HISTORY, UNCOMMITTED_SUMMARY, MEMORY_UNAVAILABLE }
+    public enum Reason { BUDGET_EXCEEDED, INVALID_HISTORY, UNCOMMITTED_SUMMARY, MEMORY_UNAVAILABLE, COMPACTION_FAILED }
     private final Reason reason;
     private final ContextBudget.Report report;
 

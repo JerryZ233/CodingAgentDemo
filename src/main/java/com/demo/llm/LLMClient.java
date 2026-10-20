@@ -38,6 +38,13 @@ public interface LLMClient extends AutoCloseable {
                                    java.util.function.Consumer<LLMFailure> onRetry) {
         return sendMessage(messages, toolsDescription, token);
     }
+
+    /** Compatible entry point: simple scripted clients remain functional interfaces. */
+    default LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token,
+                                   java.util.function.Consumer<LLMFailure> onRetry, RequestPurpose purpose) {
+        java.util.Objects.requireNonNull(purpose);
+        return sendMessage(messages, toolsDescription, token, onRetry);
+    }
     
     /**
      * Response from the LLM containing text and/or tool calls.

@@ -7,10 +7,11 @@ import java.time.Instant;
 public record SessionEvent(String sessionId, String runId, long sequence, Instant timestamp,
                            Type type, Payload payload) {
     public enum Type {
-        RUN_STARTED, ITERATION_STARTED, CONTEXT_PREPARED, LLM_REQUEST_STARTED, LLM_RETRY, LLM_FAILED, ASSISTANT_MESSAGE,
+        RUN_STARTED, ITERATION_STARTED, CONTEXT_PREPARED, MEMORY_COMPACTION, LLM_REQUEST_STARTED, LLM_RETRY, LLM_FAILED, ASSISTANT_MESSAGE,
         TOOL_STARTED, TOOL_RESULT, APPROVAL, COMMAND_OUTPUT, CANCEL_REQUESTED, RUN_FINISHED
     }
-    public sealed interface Payload permits Approval, CommandOutput, Progress, ContextPrepared, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public sealed interface Payload permits Approval, CommandOutput, Progress, ContextPrepared, MemoryCompaction, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
+    public record MemoryCompaction(com.demo.memory.MemoryHarness.CompactionPhase phase) implements Payload { }
     public record ContextPrepared(com.demo.memory.ContextBudget.Report budget) implements Payload { }
     public record Approval(String kind) implements Payload { }
     public record CommandOutput(String text) implements Payload { }

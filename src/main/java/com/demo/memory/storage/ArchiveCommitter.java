@@ -127,6 +127,11 @@ public class ArchiveCommitter {
     }
 
     public Recovery recover() {
+        return recover(null);
+    }
+
+    /** Runtime recovery is restricted to its own session; it never repairs another active writer. */
+    public Recovery recover(String sessionId) {
         try (var lock = history.files.lock(MemoryDirectory.LOCK)) {
             var state = history.state();
             int committed = 0, pending = 0;
@@ -135,12 +140,14 @@ public class ArchiveCommitter {
                 if (!name.startsWith("archive-") || !name.endsWith(".json")) continue;
                 var entry = readTransaction(name);
                 if (entry == null) continue;
+                if (sessionId != null && !sessionId.equals(entry.sessionId())) continue;
                 var existing = state.byOperation.get(entry.operationId());
                 if (existing != null && !existing.equals(entry)) throw MemoryStorageException.conflict();
                 if (existing == null) pending++;
                 if (state.committed.contains(entry.operationId())) history.files.delete(transactionPath(entry.operationId()));
             }
             for (var entry : state.byOperation.values()) {
+                if (sessionId != null && !sessionId.equals(entry.sessionId())) continue;
                 if (state.committed.contains(entry.operationId())) continue;
                 SessionSnapshot snapshot;
                 try { snapshot = sessions.load(entry.sessionId()); }

@@ -440,6 +440,27 @@ class OpenAICompatibleLLMClientTest {
         assertEquals(9, attempts.get(1).usage().totalTokens());
     }
 
+    @Test void purposeSurvivesRetriesWithoutLeakingIntoTheNextCallOrProviderBody() throws Exception {
+        replies.add(new Reply(429, "{}", 0));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"summary\"}"));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"answer\"}"));
+        var attempts = new ArrayList<com.demo.llm.RequestAttempt>();
+        Config config = new Config(origin + "/v1", "custom-model", "test-key", 128, 0, 3, ".", java.util.Set.of(),
+                "generic", new RetryPolicy(1, 1, 1), false);
+        try (var client = new OpenAICompatibleLLMClient(config, attempts::add)) {
+            assertFalse(client.sendMessage(List.of(Message.user("summarize")), null, CancellationToken.none(), ignored -> {},
+                    com.demo.llm.RequestPurpose.COMPACTION).isError());
+            assertFalse(client.sendMessage(List.of(Message.user("code")), null).isError());
+        }
+        assertEquals(List.of(com.demo.llm.RequestPurpose.COMPACTION, com.demo.llm.RequestPurpose.COMPACTION,
+                com.demo.llm.RequestPurpose.AGENT), attempts.stream().map(com.demo.llm.RequestAttempt::purpose).toList());
+        for (int i = 0; i < 3; i++) {
+            var body = takeRequest().body();
+            assertFalse(body.has("purpose"));
+            assertFalse(body.has("tools"));
+        }
+    }
+
     @Test void readsDeepSeekCacheHitTokensWithoutDoubleCountingInput() {
         String body = completion("{\"role\":\"assistant\",\"content\":\"done\"}");
         body = body.substring(0, body.length() - 1) + ",\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25,\"prompt_cache_hit_tokens\":12}}";
