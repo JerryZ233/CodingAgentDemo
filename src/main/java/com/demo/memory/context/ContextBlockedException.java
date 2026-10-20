@@ -13,7 +13,7 @@ public final class ContextBlockedException extends RuntimeException {
     }
 
     public ContextBlockedException(Reason reason, ContextBudget.Report report, Throwable cause) {
-        super("Conversation preparation blocked: " + reason + (report == null ? ""
+        super("Context preparation blocked: " + reason + (report == null ? ""
                 : "; estimated_input=" + report.estimatedInputTokens() + "; input_budget="
                 + report.inputBudgetTokens() + "; exceeded=" + report.exceeded()), cause);
         this.reason = java.util.Objects.requireNonNull(reason);

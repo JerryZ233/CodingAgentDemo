@@ -121,7 +121,7 @@ public class AgentLoop {
         } catch (com.demo.memory.context.ContextBlockedException blocked) {
             if (token.isCancellationRequested()) return complete(AgentRunResult.cancelled(iteration), events);
             checkpoint.save(context, iteration);
-            com.demo.logging.Logging.logger(AgentLoop.class).warn("Conversation preparation blocked reason={} budget={}",
+            com.demo.logging.Logging.logger(AgentLoop.class).warn("Context preparation blocked reason={} budget={}",
                     blocked.reason(), blocked.report().orElse(null));
             return complete(AgentRunResult.contextBlocked(blocked.getMessage(), iteration), events);
         } catch (com.demo.tools.process.ShellExecutionException fatal) {

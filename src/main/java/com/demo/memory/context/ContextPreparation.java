@@ -1,12 +1,11 @@
 package com.demo.memory.context;
 
 import com.demo.execution.CancellationToken;
-import com.demo.memory.context.ContextBudget;
 import com.demo.model.Message;
 import java.util.List;
 import java.util.Optional;
 
-/** Host-owned request boundary. Stage 4 can compact/checkpoint here before reassembling. */
+/** Explicit request preparation boundary; implementations may assemble or compact memory. */
 @FunctionalInterface
 public interface ContextPreparation {
     Input prepare(Request request, CancellationToken token);

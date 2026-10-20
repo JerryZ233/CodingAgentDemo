@@ -20,6 +20,27 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ContextPreparationTest {
+    @Test void requestRemainsDetachedWhenConversationAndPromptChange() {
+        var conversation = new Conversation();
+        conversation.addUserMessage("original");
+        var prompt = new PromptBuilder();
+        prompt.setSystemPromptTemplate("original system");
+        prompt.setToolDescriptions("[]");
+        var request = new ContextPreparation.Request(prompt.buildSystemPrompt(), prompt.getToolDescriptions(),
+                conversation.getMessages(), conversation.getContentRevision());
+        conversation.clear();
+        conversation.addUserMessage("replacement");
+        prompt.setSystemPromptTemplate("replacement system");
+        var input = new com.demo.memory.context.ContextWindowStrategy()
+                .prepare(request, com.demo.execution.CancellationToken.none());
+        assertEquals("original system", input.messages().get(0).getContent());
+        assertEquals("original", input.messages().get(1).getContent());
+        assertEquals(1, request.contentRevision());
+        assertEquals(3, conversation.getContentRevision());
+        assertEquals("replacement", conversation.getMessages().get(0).getContent());
+        assertThrows(UnsupportedOperationException.class, request.messages()::clear);
+    }
+
     @Test void preparationRunsBeforeEveryRequestAndItsMessagesAndSchemaAreSentTogether() {
         Conversation context = new Conversation();
         var prompt = new PromptBuilder();

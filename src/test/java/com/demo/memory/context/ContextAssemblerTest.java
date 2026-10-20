@@ -10,6 +10,38 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ContextAssemblerTest {
+    @Test void sharedAnalysisPreservesBudgetAndSelectionWithoutEstimatingRawMessagesAgain() {
+        var raw = List.of(Message.user("old request"), Message.assistant("old answer"),
+                Message.assistantToolCalls(null, List.of(new com.demo.model.ToolCall("read", "read_file", "{}"))),
+                Message.tool("read", "read_file", "result"), Message.assistant("pending"), Message.user("current"));
+        var ids = raw.stream().map(Message::getId).collect(java.util.stream.Collectors.toSet());
+        var estimates = new java.util.concurrent.atomic.AtomicInteger();
+        var estimator = new TokenEstimator() {
+            @Override public long message(Message message) {
+                if (ids.contains(message.getId())) estimates.incrementAndGet();
+                return super.message(message);
+            }
+        };
+        var config = com.demo.config.MemoryConfig.defaults();
+        var assembler = new ContextAssembler(estimator, new ContextBudget(config, 2048));
+        var compression = new CompressionState(raw.get(1).getId(), "history", "summary", 1);
+        var analysis = new ConversationBlockBuilder().analyze(raw, compression, estimator);
+        var input = assembler.assemble("system", "[]", "", "", compression, raw, analysis);
+        var report = input.budget().orElseThrow();
+        var planner = new com.demo.memory.compaction.CompactionPlanner(config, estimator);
+        var selected = planner.select(analysis, report);
+        assertEquals(raw.size(), estimates.get());
+        var ordinary = new ContextAssembler(new TokenEstimator(), new ContextBudget(config, 2048))
+                .assemble("system", "[]", "", "", compression, raw);
+        assertEquals(ordinary.budget(), input.budget());
+        assertEquals(planner.select(raw, compression, report).stream().map(Message::getId).toList(),
+                selected.stream().map(Message::getId).toList());
+        var advanced = new CompressionState(raw.get(3).getId(), "next-history", "next summary", 2);
+        var next = new ConversationBlockBuilder().analyze(raw, advanced, estimator);
+        assertEquals(4, next.covered());
+        assertEquals(new TokenEstimator().messages(raw.subList(4, raw.size())), next.recentTokens());
+    }
+
     private final TokenEstimator estimator = new TokenEstimator();
 
     private MemoryConfig small() {

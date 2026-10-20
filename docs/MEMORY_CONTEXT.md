@@ -5,15 +5,15 @@
 ## 请求链路
 
 ```text
-CodingAgent 设置工具规格
-→ AgentLoop 每次迭代调用 Context.prepareForLLM(token)
-→ ContextPreparation
+宿主配置 PromptBuilder 和准备策略，CodingAgent 设置工具规格
+→ AgentLoop 每次迭代捕获 Conversation 消息/revision 和提示词/schema
+→ memory.context.ContextPreparation.prepare(Request, token)
 → MemoryHarness 读取与验证
 → ContextAssembler + ContextBudget
 → 同一个 Input 中的 messages / toolsDescription 发送给 LLMClient
 ```
 
-`Context` 只保存消息、内容版本和宿主准备入口，不自己操作记忆文件。`ContextPreparation.Input` 保存不可变消息快照、对应工具 schema 和可选预算报告；兼容路径没有报告。启用记忆后，输入顺序为基础系统提示、全局有效条目、项目有效条目、会话连续摘要、全部未覆盖消息。
+`agent.Conversation` 只保存原始消息和内容版本。`PromptBuilder` 负责提示词与工具配置，宿主显式传入准备策略；关闭 memory 时使用 `memory.context.ContextWindowStrategy`。不可变 `ContextPreparation.Request` 隔离准备流程与原始对话。`ContextPreparation.Input` 保存不可变消息快照、对应工具 schema 和可选预算报告；兼容路径没有报告。启用记忆后，输入顺序为基础系统提示、全局有效条目、项目有效条目、会话连续摘要、全部未覆盖消息。
 
 全局默认目录为 `~/.coding-agent/global`。项目目录由 `ProjectLocator` 定位到当前 worktree 根的 `.coding-agent`；文件工具的工作范围不改变。每次请求重新读取长期文件，只渲染 active 管理条目；管理块之外的文本仍由存储保留，但不作为长期规则自动注入。
 
@@ -49,18 +49,20 @@ CodingAgent 设置工具规格
 
 `ConversationBlockBuilder` 被旧窗口、新组装器和 `CompressionState` 共用。一个 assistant 工具调用消息及其全部结果是一个块；结果可以乱序，重复/不匹配结果被拒绝。未完成的最终工具块可以存在于检查点，但不能被压缩或作为新的模型请求发出。
 
+`ConversationBlockBuilder.Analysis` 在一次准备内复用协议块、覆盖下标和块 Token 估算，供来源校验、组装和压缩规划使用；每次摘要提交后重新分析，不使用全局缓存。
+
 Harness 使用摘要前检查 `HistoryRepository.read()` 返回的已提交历史：
 
 - 当前归档及所有前驱都已提交，属于同一会话，链无环。
 - 当前摘要正文、覆盖边界、内容版本和压缩版本与链一致。
 - 从最早归档到当前归档的消息 ID 串联后，正好等于原始消息的已覆盖前缀。
 
-该校验只读。出现“会话检查点已保存但提交标记未写”的中断状态时拒绝直接使用摘要；阶段 4 通过独立运行协调入口恢复本会话提交标记，再重新校验，不在纯组装器中写磁盘或替换内存 Context。
+该校验只读。出现“会话检查点已保存但提交标记未写”的中断状态时拒绝直接使用摘要；阶段 4 通过独立运行协调入口恢复本会话提交标记，再重新校验，不在纯组装器中写磁盘或替换内存 Conversation。
 
 ## 可观察性与后续接入
 
 - 成功准备发出 `AgentEvent.CONTEXT_PREPARED`，转为 `SessionEvent.ContextPrepared`，包含无正文的预算报告；CLI 不重复打印分项，日志记录报告。
-- `Context.getLastBudgetReport()` 返回最近一次成功或预算拒绝的报告；无报告的失败会清除旧报告，避免显示过期数据。
+- 预算报告通过 `Input.budget()` 和事件传递；受阻报告通过 `ContextBlockedException.report()` 传递，原始对话不缓存报告。
 - `CONTEXT_BLOCKED` 是独立的 Agent/Session 结果，CLI 有中文状态和保留消息提示；单任务模式返回失败退出码。
 - 测试/嵌入应用通过 `DefaultSessionService` 的显式 Harness 注入入口指定隔离全局目录，不应读写真实用户记忆。
 - 阶段 4 的运行 preparation 重载接收 `MemoryModel` 与 `SessionArchiveAccess`：先估算、归档并协调更新内存状态，再重新组装；准备与模型请求使用同一取消信号。纯组装和只读重载不发起模型请求。
