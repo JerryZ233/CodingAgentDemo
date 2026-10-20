@@ -27,6 +27,7 @@ public final class CliRenderer {
                 /sessions            列出历史会话
                 /resume <序号>       恢复列表中的会话（先执行 /sessions）
                 /history             查看对话历史
+                /memory              查看项目历史检索用法
                 /status              查看会话及执行状态
                 /cancel              请求取消当前任务
                 /revoke              撤销当前任务的可复用命令授权
@@ -73,6 +74,30 @@ public final class CliRenderer {
         else terminal.print("当前空闲。");
         terminal.print(snapshot.unsaved() ? "保存情况：尚未保存。" : "保存情况：已保存。");
     }
+
+    public void memoryHelp() {
+        terminal.print("/memory search <查询>  搜索当前项目的归档历史\n/memory read <序号>  查看上次搜索结果详情\n"
+                + "需开启 memory.enabled；查看结果不会自动加入对话。");
+    }
+
+    public void memorySearch(com.google.gson.JsonObject result) {
+        int index = 1;
+        for (var value : result.getAsJsonArray("results")) {
+            var hit = value.getAsJsonObject();
+            terminal.print(index++ + " | " + hit.get("created_at").getAsString() + "\n"
+                    + hit.get("summary_preview").getAsString());
+        }
+        if (index == 1) terminal.print("未找到匹配的已提交历史。");
+        if (!result.get("complete").getAsBoolean()) terminal.print("结果不完整，请缩小查询范围；未找到结果不能证明没有相关历史。");
+        if (index > 1) terminal.print("使用 /memory read <序号> 查看详情。");
+    }
+
+    public void memoryRead(com.google.gson.JsonObject result) {
+        terminal.print("归档记录：\n" + result.get("archive_summary").getAsString()
+                + "\n当时的连续摘要：\n" + result.get("continuation_summary").getAsString());
+        if (!result.get("source_status").getAsString().equals("AVAILABLE")) terminal.print("原始来源当前不可用；仍可查看归档摘要。");
+        if (!result.get("complete").getAsBoolean()) terminal.print("当前展示受长度或来源限制，不代表完整记录。");
+    }
     public void event(SessionEvent event) {
         String text = switch (event.type()) {
             case APPROVAL -> ((SessionEvent.Approval)event.payload()).kind().equals("invalidated")?"执行入口或目录已变化，需要重新审批。":null;
@@ -100,6 +125,8 @@ public final class CliRenderer {
                 case "write_file" -> "正在写入文件…";
                 case "list_files" -> "正在查看目录…";
                 case "search_text" -> "正在搜索文件内容…";
+                case "memory_search" -> "正在搜索项目历史…";
+                case "memory_read" -> "正在读取项目历史…";
                 case "run_shell" -> "正在准备命令…";
                 default -> "正在执行操作…";
             };

@@ -16,6 +16,12 @@ public interface SessionService extends AutoCloseable {
     RunHandle submitTurn(String id, String message);
     default RunHandle submitTurn(String id, String message, RunOptions options) { return submitTurn(id,message); }
     Optional<RunHandle> getActiveRun();
+    default com.google.gson.JsonObject searchHistory(String id, String query) {
+        throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+    }
+    default com.google.gson.JsonObject readHistory(String id, String historyId, boolean includeSources) {
+        throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+    }
     /** Repairs interrupted protocol blocks and saves without resuming the failed turn. */
     SessionSnapshot retrySave(String id);
     /** Cancels active work and waits up to five seconds. Failed saving remains retryable. */

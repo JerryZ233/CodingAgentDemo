@@ -15,6 +15,7 @@ public final class CliController {
     private final org.apache.logging.log4j.Logger log = com.demo.logging.Logging.logger(CliController.class);
     private Phase phase = Phase.SELECTING_WORKSPACE;
     private String sessionId;
+    private java.util.List<String> historyIds = java.util.List.of();
     private RunOptions runOptions=RunOptions.defaults();
     public void approvalChannel(boolean available){runOptions=new RunOptions(available); }
     public CliController(SessionService service, Path defaultWorkspace, CliRenderer renderer,
@@ -31,6 +32,7 @@ public final class CliController {
         else renderer.selecting(defaultWorkspace);
     }
     private void select(SessionSnapshot snapshot) {
+        historyIds = java.util.List.of();
         sessionId = snapshot.id(); phase = Phase.INTERACTIVE; renderer.session(snapshot);
     }
     public String prompt() { return phase == Phase.SELECTING_WORKSPACE ? "目录 > " : "agent > "; }
@@ -84,6 +86,17 @@ public final class CliController {
         } else if (command instanceof CliCommand.Revoke) { if(active!=null)active.revokeApprovals(); renderer.info("已撤销当前任务的可复用授权。"); }
         else if (command instanceof CliCommand.Cancel) cancel();
         else if (command instanceof CliCommand.History) renderer.history(service.getSession(requireSession()));
+        else if (command instanceof CliCommand.MemoryHelp) renderer.memoryHelp();
+        else if (command instanceof CliCommand.MemorySearch search) {
+            historyIds = java.util.List.of();
+            var result = service.searchHistory(requireSession(), search.query());
+            historyIds = result.getAsJsonArray("results").asList().stream()
+                    .map(value -> value.getAsJsonObject().get("history_id").getAsString()).toList();
+            renderer.memorySearch(result);
+        } else if (command instanceof CliCommand.MemoryRead read) {
+            if (read.index() < 1 || read.index() > historyIds.size()) throw new CliInputException("请先使用 /memory search 搜索并选择结果序号。");
+            renderer.memoryRead(service.readHistory(requireSession(), historyIds.get(read.index() - 1), false));
+        }
         else if (command instanceof CliCommand.Status) renderer.status(service.getSession(requireSession()), active);
         else if (command instanceof CliCommand.Task task) pump.attach(service.submitTurn(requireSession(), task.text(),runOptions));
     }
@@ -94,7 +107,7 @@ public final class CliController {
     private boolean isSelectionCommand(String text) {
         String name = text.strip().split("\\s+", 2)[0].toLowerCase(java.util.Locale.ROOT);
         return java.util.Set.of("/help", "/sessions", "/resume", "/new", "/history", "/status",
-                "/cancel", "/revoke", "/retry-save", "/exit", "/quit").contains(name);
+                "/memory", "/cancel", "/revoke", "/retry-save", "/exit", "/quit").contains(name);
     }
     public void cancel() {
         RunHandle run = pump.active();

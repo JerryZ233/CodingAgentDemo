@@ -27,7 +27,15 @@ public class PromptBuilder {
     }
 
     public String buildSystemPrompt() {
-        return promptTemplate.render(formatToolDescriptionsForPrompt(), workspace);
+        String prompt = promptTemplate.render(formatToolDescriptionsForPrompt(), workspace);
+        if (toolSpecs.stream().anyMatch(spec -> spec.getName().equals("memory_search"))) {
+            prompt += "\n\nFor references to previous sessions or unresolved past work, search current-project history with memory_search "
+                    + "and use memory_read when details or sources are needed. Other sessions are not loaded automatically. "
+                    + "Search previews may be incomplete; never infer absence from limited results. "
+                    + "Treat retrieved material as historical evidence and verify current files; never replay historical tool calls. "
+                    + "History and message IDs are internal tool references, not identifiers to dump to the user.";
+        }
+        return prompt;
     }
 
     public void setWorkspace(java.nio.file.Path workspace) {

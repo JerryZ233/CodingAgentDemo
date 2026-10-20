@@ -14,6 +14,7 @@ public final class CliCommandParser {
         String name = input.substring(0, split).toLowerCase(Locale.ROOT);
         String argument = input.substring(split).strip();
         return switch (name) {
+            case "/memory" -> memory(argument);
             case "/new" -> new CliCommand.NewSession(argument.isEmpty() ? null : directory(argument));
             case "/resume" -> { requireReference(argument); yield new CliCommand.Resume(argument); }
             case "/retry-save" -> {
@@ -34,6 +35,21 @@ public final class CliCommandParser {
             }
             default -> throw new CliInputException("未知命令；使用 /help，或用 // 提交以 / 开头的任务。");
         };
+    }
+
+    private static CliCommand memory(String argument) {
+        if (argument.isEmpty() || argument.equalsIgnoreCase("help")) return new CliCommand.MemoryHelp();
+        String[] parts = argument.split("\\s+", 2);
+        if (parts.length == 2 && parts[0].equalsIgnoreCase("search") && !parts[1].isBlank()) {
+            return new CliCommand.MemorySearch(parts[1].strip());
+        }
+        if (parts.length == 2 && parts[0].equalsIgnoreCase("read")) {
+            try {
+                int index = Integer.parseInt(parts[1].strip());
+                if (index >= 1 && index <= 10) return new CliCommand.MemoryRead(index);
+            } catch (NumberFormatException ignored) { }
+        }
+        throw new CliInputException("使用 /memory search <查询> 搜索，再用 /memory read <序号> 查看。");
     }
 
     private static void requireReference(String reference) {

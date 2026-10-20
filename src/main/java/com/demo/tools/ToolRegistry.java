@@ -48,6 +48,17 @@ public final class ToolRegistry {
         return tools;
     }
 
+    /** Memory tools are host services, enabled by memory.enabled rather than workspace tool names. */
+    public ToolRegistry withHistory(com.demo.memory.HistorySearchService history) {
+        Map<String, Tool> combined = new LinkedHashMap<>(tools);
+        if (combined.containsKey("memory_search") || combined.containsKey("memory_read")) {
+            throw new IllegalStateException("History tools already installed");
+        }
+        combined.put("memory_search", new MemorySearchTool(history));
+        combined.put("memory_read", new MemoryReadTool(history));
+        return new ToolRegistry(combined);
+    }
+
     public List<ToolSpec> getToolSpecs() {
         return toolSpecs;
     }

@@ -11,8 +11,9 @@
 - 阶段 2：已完成 Markdown 条目、增量历史、本地版本/事务、文件锁、会话条件检查点与中断恢复，本地回归通过。
 - 阶段 3：已实现协议块、Token 估算、统一组装、请求前准备入口和上下文受阻结果；验证结果见下方阶段 3 交接。
 - 阶段 4：已实现无工具摘要、自动增量压缩、超长来源分片、运行时提交协调与请求用途；验证结果见下方阶段 4 交接。
-- 阶段 5～8：尚未实现。
-- 阶段 0～3 已本地提交为 `5a22d45`（Implement memory foundations and unified context budgeting），未 push。阶段 4 修改保留在工作区。
+- 阶段 5：已实现当前项目历史搜索/读取、有界来源、模型工具和 CLI 查看；验证结果见下方阶段 5 交接。
+- 阶段 6～8：尚未实现。
+- 阶段 0～3 已本地提交为 `5a22d45`，阶段 4 已本地提交为 `dbccb96`（Add automatic conversation compaction and durable continuation summaries），未 push。阶段 5 修改保留在工作区。
 
 ## 当前接口与格式
 
@@ -39,7 +40,7 @@
 
 ## 下一阶段
 
-从阶段 5 接续：历史搜索/读取服务及 `memory_search`、`memory_read` 工具。只搜索当前项目的已提交历史，默认 5 条、最多 10 条，有界读取；项目身份由宿主注入，工具参数不能指定任意路径。保持默认关闭。
+从阶段 6 接续：增量长期知识提炼、即时记忆提案、冲突候选持久化与逐条自然语言裁决。沿用稳定条目 ID、局部操作、来源、作用域和预算检查；全局更新必须明确批准，不从项目行为推断全局规则。保持默认关闭。
 
 ## 阶段 2 存储交接
 
@@ -88,3 +89,19 @@
 - 验证：第四阶段专项回归通过；最终 JDK 17 的 `gradlew.bat --offline --no-daemon test` 共 387 项，382 通过、5 跳过、0 失败/错误。本地 Python `python -m unittest discover -s eval -p 'test_*.py' -v` 共 13 项全部通过。
 - 专项首轮两项回退用例误将已经超出总预算的输入当作可容纳输入，依据实际系统提示/schema 开销修正测试边界后通过。全量首轮的两项并行新增评测配置测试遇到 Linux 路径在 Windows 上校验的问题；其源码已有平台适配，按当前源码重新编译后全量通过，未改动或回退这些评测工作。
 - `git diff --check` 通过。未调用真实模型 API，未运行 Docker/Harbor 评测。
+
+## 阶段 5 检索交接
+
+- 具体 API、输出限制、来源状态和 CLI 用法见 [MEMORY_RETRIEVAL.md](MEMORY_RETRIEVAL.md)。
+- `HistorySearchService` 构造时绑定宿主解析的项目根及配置的 SessionRepository。每次读取检查边界，只搜索已提交历史，不创建存储、不修复 pending、不发起模型调用。
+- 匹配使用 Unicode NFKC/大小写归一化、英文词项/标识符、中文字符片段；关键词权重高于正文，时间仅用于相关度相同的排序。无向量依赖或跨查询缓存。
+- 搜索默认 5 条、最多 10 条；所有工具响应限制为 2000 估算 Token 和 8000 字符，条数、字段截断和不完整日志尾行有显式标记。
+- 原始来源只从当前配置的 session-dir 读取，返回前核验项目归属、内容版本及连续覆盖 ID。来源缺失/不匹配时仍可读摘要，不能返回其他项目的原始对话。
+- Service 在 memory.enabled 开启时用 `ToolRegistry.withHistory` 注入 memory_search/memory_read。`KNOWN_TOOLS` 保持工作区工具配置集合；历史服务使用 MEMORY_READ capability，不扩展普通文件工具范围。
+- 基础提示增加按需检索说明；搜索结果作为普通工具消息参与统一预算。新会话不自动加载旧对话或完整 history。
+- CLI 提供 /memory、/memory search 和 /memory read <序号>；序号只对上次搜索有效，切换/新建会话或搜索失败时清空。查看不会改消息/内容版本/整理状态。
+- journal 读取与条目扫描支持取消；写入和提交恢复维持原有短事务语义。
+- 第四阶段预算边界回归用例调整总窗口以包含新增工具 schema 和提示的真实开销，保留“能安全回退/必须暂停”和“工具循环内触发”的行为验收。
+- 记忆仍默认关闭；本阶段修改未提交，未 push，未改动或回退并行评测文件。
+- 最终验证：JDK 17 执行 `gradlew.bat --offline --no-daemon test`，共 405 项，400 通过、5 跳过、0 失败/错误；本地 Python `python -m unittest discover -s eval -p 'test_*.py' -v` 共 13 项全部通过。
+- `git diff --check` 通过；未调用真实模型 API，未运行 Docker/Harbor 评测。下一阶段为阶段 6 的增量长期记忆提炼。

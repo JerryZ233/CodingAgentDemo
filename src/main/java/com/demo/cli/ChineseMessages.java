@@ -33,6 +33,13 @@ final class ChineseMessages {
         };
     }
     static String failure(Throwable failure) {
+        if (failure instanceof com.demo.memory.HistoryAccessException history) return switch (history.reason()) {
+            case DISABLED -> "记忆功能尚未开启；启用 memory.enabled 后可检索项目历史。";
+            case NOT_FOUND -> "未找到这条已提交历史，请重新搜索。";
+            case PROJECT_CHANGED -> "项目边界已变化，请重新打开会话后检索。";
+            case PROJECT_UNAVAILABLE -> "项目目录当前不可用，无法检索历史。";
+            case HISTORY_UNAVAILABLE -> "项目历史暂时无法读取，请检查存储完整性。";
+        };
         if (failure instanceof SessionStorageException storage) return switch (storage.getReason()) {
             case NOT_FOUND -> "未找到该会话，请使用 /sessions 查看可选会话。";
             case MALFORMED_DATA -> "会话文件已损坏，无法读取。详细原因已记录到日志。";

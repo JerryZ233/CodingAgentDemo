@@ -31,12 +31,19 @@ final class MemoryJournal {
     }
 
     Read read() throws IOException {
+        return read(com.demo.execution.CancellationToken.none());
+    }
+
+    Read read(com.demo.execution.CancellationToken token) throws IOException {
+        token.throwIfCancellationRequested();
         var target = files.path(path);
         List<Event> events = new ArrayList<>();
         long complete = 0;
         var line = new ByteArrayOutputStream();
         try (var input = new java.io.BufferedInputStream(Files.newInputStream(target))) {
+            int scanned = 0;
             for (int value; (value = input.read()) != -1;) {
+                if (++scanned % 4096 == 0) token.throwIfCancellationRequested();
                 if (value == '\n') {
                     byte[] bytes = line.toByteArray();
                     events.add(MemoryJson.decode(bytes, Event.class));
@@ -50,6 +57,7 @@ final class MemoryJournal {
                 }
             }
         } catch (java.nio.file.NoSuchFileException absent) { return new Read(List.of(), 0, new byte[0]); }
+        token.throwIfCancellationRequested();
         return new Read(events, complete, line.toByteArray());
     }
 

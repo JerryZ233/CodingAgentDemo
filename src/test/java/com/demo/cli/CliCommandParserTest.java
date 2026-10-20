@@ -25,4 +25,13 @@ class CliCommandParserTest {
         for (String line : new String[]{"/unknown", "/status extra", "/resume", "/resume broken", "/new \"open", "/new ''"})
             assertThrows(IllegalArgumentException.class, () -> parser.parse(line));
     }
+
+    @Test void memoryCommandsPreserveQueryAndValidateLocalResultOrdinals() {
+        assertEquals(new CliCommand.MemorySearch("配置 ConfigLoader"), parser.parse("/MEMORY SEARCH 配置 ConfigLoader"));
+        assertEquals(new CliCommand.MemoryRead(2), parser.parse("/memory read 2"));
+        assertInstanceOf(CliCommand.MemoryHelp.class, parser.parse("/memory"));
+        for (String input : new String[]{"/memory read 0", "/memory read 11", "/memory read bad", "/memory search", "/memory unknown"}) {
+            assertThrows(IllegalArgumentException.class, () -> parser.parse(input));
+        }
+    }
 }

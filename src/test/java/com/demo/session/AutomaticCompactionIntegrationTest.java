@@ -21,7 +21,7 @@ class AutomaticCompactionIntegrationTest {
     @TempDir Path temp;
     private final Instant now = Instant.parse("2026-10-20T10:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
-    private final MemoryConfig memory = new MemoryConfig(true, 16000, 1000, .8, .6, 500, 500, 400, 2,
+    private final MemoryConfig memory = new MemoryConfig(true, 18000, 1000, .8, .6, 500, 500, 400, 2,
             MemoryConfig.Consolidation.defaults(), MemoryConfig.Maintenance.defaults());
     private final Config config = Config.defaults().withMemory(memory);
     private JsonSessionRepository repository;

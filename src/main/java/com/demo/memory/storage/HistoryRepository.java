@@ -26,17 +26,26 @@ public final class HistoryRepository {
     }
 
     public Snapshot read() {
+        return read(com.demo.execution.CancellationToken.none());
+    }
+
+    public Snapshot read(com.demo.execution.CancellationToken token) {
         try {
-            State state = state();
+            State state = state(token);
             return new Snapshot(state.committed.stream().map(state.byOperation::get).toList(), state.incompleteTail);
         } catch (IOException | SecurityException failure) { throw MemoryStorageException.io(failure); }
         catch (IllegalArgumentException failure) { throw MemoryStorageException.malformed(failure); }
     }
 
     State state() throws IOException {
-        var read = journal.read();
+        return state(com.demo.execution.CancellationToken.none());
+    }
+
+    private State state(com.demo.execution.CancellationToken token) throws IOException {
+        var read = journal.read(token);
         var state = new State(read.incompleteTail());
         for (var event : read.events()) {
+            token.throwIfCancellationRequested();
             switch (event.type()) {
                 case "ARCHIVE_PREPARED" -> {
                     var entry = MemoryJson.decode(MemoryJson.bytes(event.data().toString()), HistoryEntry.class);

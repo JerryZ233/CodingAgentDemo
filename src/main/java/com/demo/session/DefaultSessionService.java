@@ -173,8 +173,11 @@ public final class DefaultSessionService implements SessionService {
                         "Retry saving unsaved sessions before starting another turn");
             }
             workspaces.validateStored(session.workspace);
-            if (session.agent == null) session.agent = new CodingAgent(client,
-                    ToolRegistry.fromConfig(config, session.workspace), config.getMaxIterations());
+            if (session.agent == null) {
+                var tools = ToolRegistry.fromConfig(config, session.workspace);
+                if (memoryHarness != null) tools = tools.withHistory(new com.demo.memory.HistorySearchService(session.workspace, repository));
+                session.agent = new CodingAgent(client, tools, config.getMaxIterations());
+            }
             ActiveRun run = new ActiveRun(session.id, clock, Objects.requireNonNull(options));
             active = run;
             try {
@@ -195,6 +198,20 @@ public final class DefaultSessionService implements SessionService {
             if (e.getCause() instanceof Error cause) throw cause;
             throw e;
         }
+    }
+
+    @Override public com.google.gson.JsonObject searchHistory(String id, String query) {
+        ensureReadable();
+        if (memoryHarness == null) throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+        return new com.demo.memory.HistorySearchService(getSession(id).workspace(), repository)
+                .search(query, com.demo.memory.HistorySearchService.DEFAULT_RESULTS, com.demo.execution.CancellationToken.none());
+    }
+
+    @Override public com.google.gson.JsonObject readHistory(String id, String historyId, boolean includeSources) {
+        ensureReadable();
+        if (memoryHarness == null) throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+        return new com.demo.memory.HistorySearchService(getSession(id).workspace(), repository)
+                .read(historyId, includeSources, com.demo.execution.CancellationToken.none());
     }
 
     private void executeTurn(Session session, String message, ActiveRun run) {

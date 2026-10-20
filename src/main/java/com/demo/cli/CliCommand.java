@@ -7,6 +7,9 @@ public sealed interface CliCommand {
     record RetrySave(String id) implements CliCommand {}
     record Sessions() implements CliCommand {}
     record History() implements CliCommand {}
+    record MemoryHelp() implements CliCommand {}
+    record MemorySearch(String query) implements CliCommand {}
+    record MemoryRead(int index) implements CliCommand {}
     record Status() implements CliCommand {}
     record Revoke() implements CliCommand {}
     record Cancel() implements CliCommand {}
