@@ -1,0 +1,5 @@
+{
+  "path": "todo/TodoStore.java",
+  "old": "public List<Item> list() { return List.copyOf(items); }",
+  "new": "public List<Item> list() { return List.of(); }"
+}

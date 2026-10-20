@@ -1,0 +1,33 @@
+package todo;
+
+import java.io.IOException;
+import java.nio.file.Path;
+
+public final class TodoService {
+    public void execute(String[] args) throws IOException {
+        if (args.length < 2) throw new IllegalArgumentException("Expected file and command");
+        String command = args[1];
+        int expected = switch (command) {
+            case "add", "done" -> 3;
+            case "rename" -> 4;
+            case "list" -> args.length == 3 ? 3 : 2;
+            default -> throw new IllegalArgumentException("Unknown command");
+        };
+        if (args.length != expected) throw new IllegalArgumentException("Wrong argument count");
+        if (command.equals("list") && args.length == 3 && !args[2].equals("open") && !args[2].equals("done"))
+            throw new IllegalArgumentException("Unknown filter");
+        TodoStore store = new TodoStore(Path.of(args[0]));
+        switch (command) {
+            case "add" -> store.add(args[2]);
+            case "done" -> store.complete(Integer.parseInt(args[2]));
+            case "rename" -> store.rename(Integer.parseInt(args[2]), args[3]);
+            case "list" -> {
+                for (var item : args.length == 2 ? store.list() : store.listByStatus(args[2].equals("done"))) print(item);
+            }
+        }
+    }
+
+    private void print(TodoStore.Item item) {
+        System.out.println(item.id() + "\t" + (item.done() ? "done" : "open") + "\t" + item.text());
+    }
+}

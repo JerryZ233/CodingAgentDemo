@@ -8,7 +8,7 @@ llm:
 agent:
   max_iterations: 30
 tools:
-  enabled: [read_file, write_file, list_files, run_shell]
+  enabled: [read_file, write_file, list_files, search_text, run_shell]
   shell:
     search_directories: [/opt/java/openjdk/bin, /usr/bin, /bin]
     profiles:

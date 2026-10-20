@@ -7,9 +7,9 @@ class WorkspaceProbe {
     public static void main(String[] args) throws Exception {
         Path root = Path.of("/workspace");
         var access = new WorkspaceFileAccess(root);
-        var snapshot = access.read("src/TextStats.java");
-        new AtomicFileWriter(access).replace("src/TextStats.java", "return Map.of();",
-                "return Map.of(\"probe\", 1L);", snapshot.sha256());
+        var snapshot = access.read("src/CsvParser.java");
+        new AtomicFileWriter(access).replace("src/CsvParser.java", "public class CsvParser",
+                "/* offline write probe */ public class CsvParser", snapshot.sha256());
         access.verifyBinding();
         Files.createDirectory(root.resolve(".probe-classes"));
         access.verifyBinding();

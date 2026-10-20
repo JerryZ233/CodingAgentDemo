@@ -508,7 +508,7 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
 
 ### 端到端 Agent 评测
 
-新增基于 Harbor 与 Docker 的本地评测流程：运行 Agent 修改 Java 样例工程，由独立验收容器分别运行功能和回归测试，并保存 Token 消耗、耗时与 JSON/CSV 报告。配置与运行方式见 [eval/README.md](eval/README.md)。
+基于 Harbor 与 Docker 的本地评测流程默认运行四题：CSV 修复、跨模块 CLI 持久化、仓库搜索修复和大文件局部编辑，覆盖六类代码能力。由独立验收容器分别运行功能和回归测试，并保存 Token 消耗、耗时与 JSON/CSV 报告；可用 `-Task` 只选一题。配置与运行方式见 [eval/README.md](eval/README.md)。
 
 普通测试及不调用真实模型的离线验证可正常运行。真实模型测试需要用户显式指示；“跑一次harbor测试”默认使用真实模型，无需再次确认，不自动重跑。
 

@@ -1,0 +1,18 @@
+schema_version = "1.4"
+artifacts = ["/workspace/src"]
+[metadata]
+name = "repo-search-fix"
+[environment]
+docker_image = "coding-agent-eval-repo-search-fix:local"
+cpus = 2
+memory_mb = 2048
+workdir = "/workspace"
+[agent]
+timeout_sec = 660
+[verifier]
+timeout_sec = 120
+environment_mode = "separate"
+[verifier.environment]
+docker_image = "coding-agent-verifier-repo-search-fix:local"
+cpus = 2
+memory_mb = 1024

@@ -1,6 +1,6 @@
 param(
     [ValidateSet('agent', 'oracle', 'initial')][string]$Mode = 'agent',
-    [ValidateSet('text-stats', 'csv-parser', 'todo-filter')][string[]]$Task,
+    [ValidateSet('csv-parser', 'todo-workflow', 'repo-search-fix', 'large-file-edit')][string[]]$Task,
     [string]$LocalConfig,
     [switch]$AllowModelCalls,
     [switch]$SkipBuild
@@ -11,7 +11,7 @@ if ($Mode -eq 'agent' -and !$AllowModelCalls) {
     exit 2
 }
 $repo = Split-Path $PSScriptRoot -Parent
-$taskNames = if ($Task) { $Task } else { @('text-stats', 'csv-parser', 'todo-filter') }
+$taskNames = if ($Task) { @($Task | Select-Object -Unique) } else { @('csv-parser', 'todo-workflow', 'repo-search-fix', 'large-file-edit') }
 $runId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 $results = Join-Path $PSScriptRoot "results/$runId"
 $containerName = "coding-agent-eval-$runId"

@@ -1,0 +1,18 @@
+llm:
+  provider: deepseek
+  api_url: https://api.deepseek.com/chat/completions
+  model: deepseek-flash
+  max_tokens: 4096
+  temperature: 0.7
+  max_retries: 10
+agent:
+  max_iterations: 30
+tools:
+  enabled: [read_file, write_file, list_files, search_text]
+  shell:
+    search_directories: [/opt/java/openjdk/bin, /usr/bin, /bin]
+    profiles:
+      default:
+        environment:
+          JAVA_HOME: /opt/java/openjdk
+          PATH: /opt/java/openjdk/bin:/usr/bin:/bin

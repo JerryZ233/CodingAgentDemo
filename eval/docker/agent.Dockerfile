@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 curl ca
        -o /opt/junit/console.jar
 COPY --from=build /source/build/install/CodingAgentDemo /opt/agent
 COPY eval/config.yaml /opt/eval/config.yaml
+COPY eval/config-files.yaml /opt/eval/config-files.yaml
 ENV CODING_AGENT_EVAL_CONTAINER=1 EVAL_CONFIG=/opt/eval/config.yaml
 ENV CODING_AGENT_LOG_DIR=/logs/agent/java-logs
 WORKDIR /workspace

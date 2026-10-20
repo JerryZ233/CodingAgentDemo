@@ -5,10 +5,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 from report import summarize
 from model_config import apply_model_config
+
+TASKS = ("csv-parser", "todo-workflow", "repo-search-fix", "large-file-edit")
 
 
 async def run_job(args, tasks):
@@ -36,24 +39,31 @@ async def run_job(args, tasks):
     await job.run()
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--task", action="append", choices=["text-stats", "csv-parser", "todo-filter"])
+    parser.add_argument("--task", action="append", choices=TASKS)
     parser.add_argument("--mode", choices=["agent", "oracle", "initial"], default="agent")
     parser.add_argument("--allow-model-calls", action="store_true",
                         help="Explicit one-invocation consent to consume model tokens; never set in automation")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.mode == "agent" and not args.allow_model_calls:
         parser.error("Real-model evaluation requires an explicit user request and --allow-model-calls")
+    args.task = list(dict.fromkeys(args.task or TASKS))
+    return args
+
+
+def main():
+    args = parse_args()
     # Do not trust an inherited marker; only this invocation's explicit CLI flag can grant consent.
     os.environ.pop("CODING_AGENT_EVAL_MODEL_CALLS", None)
     if args.mode == "agent" and args.allow_model_calls:
         os.environ["CODING_AGENT_EVAL_MODEL_CALLS"] = "explicit"
-    tasks = args.task or ["text-stats", "csv-parser", "todo-filter"]
+    tasks = args.task
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if (args.output_dir / "jobs").exists():
-        parser.error("Use a fresh output directory for every evaluation")
+        print("Use a fresh output directory for every evaluation", file=sys.stderr)
+        return 2
     import yaml
     provenance_file = args.output_dir / "provenance.json"
     provenance = json.loads(provenance_file.read_text(encoding="utf-8-sig")) if provenance_file.exists() else {}

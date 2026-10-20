@@ -16,7 +16,7 @@ subprocess.run(['python3','/tmp/prepare-workspace.py','/workspace'],check=True)
 raise SystemExit(subprocess.run(['java','-cp','/opt/agent/lib/*','/tmp/WorkspaceProbe.java']).returncode)
 """
     result = subprocess.run(["docker", "run", "--rm", "-i", "--network", "none",
-                             "coding-agent-eval-text-stats:local", "python3", "-c", bootstrap],
+                             "coding-agent-eval-csv-parser:local", "python3", "-c", bootstrap],
                             input=json.dumps(payload), capture_output=True, text=True, timeout=60)
     print(result.stdout, end="")
     if result.returncode or "WRITE_AND_BINDING_OK" not in result.stdout:

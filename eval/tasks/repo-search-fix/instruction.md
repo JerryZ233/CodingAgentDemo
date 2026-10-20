@@ -1,0 +1,5 @@
+Fix live request routing through app.Gateway.dispatch(List<Route>,String). Find the implementation used by that entrypoint, preserving public APIs and unrelated modules. The repository includes archived routing notes and an independent legacy.Router API.
+
+Route patterns are exact absolute paths, prefix patterns ending in /*, or the default *. Exact wins over all prefixes; otherwise choose the longest matching prefix, otherwise *. A prefix /api/* matches /api itself and paths starting /api/, but not /apiculture. /* matches all absolute paths. Matching is case-sensitive. Return null if no route matches. Patterns are unique, handlers are nonnull, inputs are valid absolute paths without queries, encoding or normalization concerns. Results must not depend on route ordering.
+
+Only edit src/. Tools: read_file, write_file, list_files, search_text. Shell is deliberately unavailable. Use directory pagination and narrow incomplete searches as necessary. Read relevant source before editing; hidden verification independently compiles and tests your submission. No local execution is available to the agent.

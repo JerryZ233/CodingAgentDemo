@@ -46,7 +46,8 @@ def verify(source=Path("/workspace/src"), tests=Path("/tests"), logs=Path("/logs
                 result[group + "_exit_code"] = None
                 continue
             reports = logs / group
-            status = invoke(["java", "-jar", str(junit), "execute", "--disable-banner", "--fail-if-no-tests",
+            status = invoke(["java", "-Dfile.encoding=UTF-8", "-Deval.source.dir=" + str(source.resolve()),
+                             "-jar", str(junit), "execute", "--disable-banner", "--fail-if-no-tests",
                              "--class-path", str(classes), "--select-class",
                              "FunctionalTest" if group == "functional" else "RegressionTest",
                              "--reports-dir", str(reports)], logs / (group + ".log"), timeout=25)

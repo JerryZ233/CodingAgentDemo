@@ -1,0 +1,5 @@
+Fix only the two marked method regions in src/PricingRules.java. shippingFee(long subtotalCents): charge 500 cents below 10000 cents; charge 0 at or above 10000. discountedTotal(long subtotalCents,int discountPercent): return floor(subtotalCents * (100 - discountPercent) / 100), in integer cents. Inputs are 0 <= subtotalCents <= 1000000000 and 0 <= discountPercent <= 100. Preserve public APIs and currency().
+
+Only change text BETWEEN the BEGIN EDIT / END EDIT boundary lines for shippingFee and discountedTotal. Keep those boundary lines and every byte outside both regions unchanged (including all notes and line endings). The source is larger than a whole-file tool message: use range reads and exact replacements with the current SHA-256; do not overwrite a full file from a partial read. Each successful edit returns the new hash.
+
+Tools: read_file, write_file, list_files, search_text. Shell is deliberately unavailable. Only edit src/. Hidden verification independently compiles, tests behavior, and checks preservation outside the allowed regions. No local execution is available to the agent.

@@ -1,0 +1,5 @@
+{
+  "path": "CsvParser.java",
+  "old": "if(csv.isEmpty())return rows;",
+  "new": "if(csv.isEmpty())return List.of(List.of(\"broken\"));"
+}
