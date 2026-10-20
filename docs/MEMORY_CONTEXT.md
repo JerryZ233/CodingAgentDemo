@@ -1,6 +1,6 @@
 # 上下文组装与预算（阶段 3）
 
-默认 `memory.enabled=false`，保持旧的字符数/消息数窗口。显式开启后，`DefaultSessionService` 为每个前台会话注入 `MemoryHarness`。本文描述阶段 3 的组装接口；阶段 4 已加入自动压缩，详见 [压缩说明](MEMORY_COMPACTION.md)。直接使用只读 preparation 重载时仍不会生成摘要或写记忆。
+默认 `memory.enabled=true`，`DefaultSessionService` 为每个前台会话注入 `MemoryHarness`；显式关闭时使用旧的字符数/消息数窗口。本文描述阶段 3 的组装接口；阶段 4 已加入自动压缩，详见 [压缩说明](MEMORY_COMPACTION.md)。直接使用只读 preparation 重载时仍不会生成摘要或写记忆。配置、升级和验收见 [运行说明](MEMORY_OPERATIONS.md)。
 
 ## 请求链路
 

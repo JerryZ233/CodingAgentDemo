@@ -76,11 +76,11 @@ class CliSessionIntegrationTest {
             public void error(String text) { print(text); }
             public void close() {}
         };
-        Config defaults = Config.defaults();
+        Config defaults = com.demo.testing.TestConfigs.defaults();
         Config config = new Config(defaults.getApiUrl(), defaults.getModel(), "", defaults.getMaxTokens(),
                 defaults.getTemperature(), defaults.getMaxIterations(), temp.toString(), defaults.getEnabledTools());
         var app = new CliApplication(() -> config, (cfg, options) -> {
-            var service = new DefaultSessionService(cfg, filesModel(), new JsonSessionRepository(temp.resolve("store")), Clock.systemUTC());
+            var service = new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(cfg), filesModel(), new JsonSessionRepository(temp.resolve("store")), Clock.systemUTC());
             serviceRef.set(service); return service;
         }, () -> terminal, false);
         assertEquals(0, app.run(new String[0]));
@@ -92,7 +92,7 @@ class CliSessionIntegrationTest {
     @Test void singleTaskSavesAndReturnsOutcomeExitCodes() {
         for (boolean fail : new boolean[]{false, true}) {
             var output = new StringWriter();
-            var app = new CliApplication(Config::defaults, (cfg, options) -> new DefaultSessionService(cfg,
+            var app = new CliApplication(com.demo.testing.TestConfigs::defaults, (cfg, options) -> new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(cfg),
                     (messages, tools) -> fail ? LLMClient.LLMResponse.error("model unavailable") : new LLMClient.LLMResponse("done", null),
                     new JsonSessionRepository(temp.resolve(fail ? "fail" : "success")), Clock.systemUTC()),
                     () -> new PlainTerminalIO(new StringReader(""), new PrintWriter(output), new PrintWriter(output)), false);
@@ -127,7 +127,7 @@ class CliSessionIntegrationTest {
             public void error(String text) { print(text); }
             public void close() {}
         };
-        var app = new CliApplication(Config::defaults, (cfg, options) -> new DefaultSessionService(cfg, model,
+        var app = new CliApplication(com.demo.testing.TestConfigs::defaults, (cfg, options) -> new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(cfg), model,
                 new JsonSessionRepository(temp.resolve("store")), Clock.systemUTC()), () -> terminal, false);
         assertEquals(0, app.run(new String[]{"--workspace", temp.toString()}));
         var summary = new JsonSessionRepository(temp.resolve("store")).list().sessions().get(0);
@@ -147,7 +147,7 @@ class CliSessionIntegrationTest {
             public Registration onInterrupt(Runnable action) { signal.set(action); return () -> signal.set(null); }
             public void close() {}
         };
-        var app = new CliApplication(Config::defaults, (cfg, options) -> new DefaultSessionService(cfg, (messages, tools) -> {
+        var app = new CliApplication(com.demo.testing.TestConfigs::defaults, (cfg, options) -> new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(cfg), (messages, tools) -> {
             signal.get().run(); return new LLMClient.LLMResponse("late", null);
         }, new JsonSessionRepository(temp.resolve("store")), Clock.systemUTC()), () -> terminal, false);
         assertEquals(130, app.run(new String[]{"--workspace", temp.toString(), "task"}));

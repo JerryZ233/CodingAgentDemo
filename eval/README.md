@@ -11,6 +11,8 @@ Harbor 0.24.0 调度本项目 Java Agent 修改样例工程，再启动独立容
 
 五个工具为 `read_file`、`write_file`、`list_files`、`search_text`、`run_shell`。两个文件工具专项任务通过镜像内的 `EVAL_CONFIG=/opt/eval/config-files.yaml` 关闭 Shell，避免绕过文件协议。四题合并覆盖六类代码能力；相较九题减少五次 Agent 运行，实际 Token 成本以结果报告为准。此次不覆盖会话恢复、取消、审批拒绝或故障注入。
 
+普通编码评测显式关闭分层记忆：两个评测 YAML、adapter 的调用环境和 EvalMain 都执行隔离，结果记录 `memory_enabled=false`；不会读取宿主用户记忆或启动后台回填。分层记忆另用 `gradlew.bat --offline --no-daemon memoryTest` 做隔离的脚本模型/本地 HTTP 验收，范围和报告路径见 [记忆运行说明](../docs/MEMORY_OPERATIONS.md)。
+
 **普通测试可正常运行，无需用户逐次指示，包括不调用真实模型的 Docker 测试和 Harbor 离线验证（`oracle`、`initial`）。只有调用真实模型 API 的测试需要用户显式指示；每次重新发起评测也需要明确指示。** 真实模型评测不得自动接入定时任务、自动 CI、Git hooks 或日常构建。获得指示后，执行者为本次运行传入 `-AllowModelCalls`，无需再次询问确认；配置了 API Key 本身不代表获得授权。启动脚本、Python 编排器、Harbor 适配器和 Java 入口均检查本次调用的授权。
 
 本项目中，用户说“跑一次harbor测试”即明确授权一次 `agent` 模式的真实模型评测；只有明确要求离线、`oracle` 或 `initial` 时才使用对应离线模式。复用尚不支持 Python 授权开关的旧 release 镜像时，PowerShell 仍要求本次显式传入 `-AllowModelCalls`，并兼容旧版参数；无需重新编译或构建镜像。

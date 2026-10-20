@@ -4,6 +4,8 @@ import com.demo.execution.CancellationToken;
 import com.demo.execution.OperationCancelledException;
 import com.demo.execution.ResourceCleanupException;
 import com.demo.llm.LLMClient;
+import com.demo.memory.context.ContextPreparation;
+import com.demo.memory.context.ContextWindowStrategy;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import com.demo.model.ToolResult;
@@ -40,16 +42,23 @@ public class AgentLoop {
         this.maxIterations = maxIterations;
     }
 
-    public AgentRunResult run(Context context) { return run(context, AgentCheckpoint.noop()); }
-    public AgentRunResult run(Context context, AgentCheckpoint checkpoint) {
+    public AgentRunResult run(Conversation context) { return run(context, AgentCheckpoint.noop()); }
+    public AgentRunResult run(Conversation context, AgentCheckpoint checkpoint) {
         return run(context, checkpoint, CancellationToken.none(), AgentEventLog.noop());
     }
 
-    public AgentRunResult run(Context context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog progress) {
+    public AgentRunResult run(Conversation context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog progress) {
         return run(context, checkpoint, com.demo.tools.ToolExecutionContext.unavailable(token), progress);
     }
-    public AgentRunResult run(Context context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog progress) {
+    public AgentRunResult run(Conversation context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog progress) {
+        return run(context, checkpoint, execution, progress, new PromptBuilder(), new ContextWindowStrategy());
+    }
+
+    public AgentRunResult run(Conversation context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution,
+                              AgentEventLog progress, PromptBuilder prompt, ContextPreparation preparation) {
         CancellationToken token = execution.token();
+        Objects.requireNonNull(prompt);
+        Objects.requireNonNull(preparation);
         Objects.requireNonNull(checkpoint);
         AgentEventLog events = event -> { eventLog.append(event); progress.append(event); };
         events.append(AgentEvent.runStarted());
@@ -62,7 +71,10 @@ public class AgentLoop {
                 try (var iterationScope = org.apache.logging.log4j.CloseableThreadContext.put("iteration", String.valueOf(current))) {
                     observer.onIterationStarted(iteration);
                     events.append(AgentEvent.iterationStarted(iteration));
-                    var input = context.prepareForLLM(token);
+                    var request = new ContextPreparation.Request(prompt.buildSystemPrompt(), prompt.getToolDescriptions(),
+                            context.getMessages(), context.getContentRevision());
+                    var input = preparation.prepare(request, token);
+                    token.throwIfCancellationRequested();
                     input.budget().ifPresent(report -> events.append(AgentEvent.contextPrepared(current, report)));
                     token.runIfActive(() -> events.append(AgentEvent.llmRequestStarted(current)));
                     LLMClient.LLMResponse response = llmClient.sendMessage(input.messages(), input.toolsDescription(), token,
@@ -106,10 +118,10 @@ public class AgentLoop {
             observer.onMaxIterations(error);
             events.append(AgentEvent.maxIterations(maxIterations, error));
             return complete(AgentRunResult.maxIterations(error, maxIterations), events);
-        } catch (com.demo.memory.ContextBlockedException blocked) {
+        } catch (com.demo.memory.context.ContextBlockedException blocked) {
             if (token.isCancellationRequested()) return complete(AgentRunResult.cancelled(iteration), events);
             checkpoint.save(context, iteration);
-            com.demo.logging.Logging.logger(AgentLoop.class).warn("Context preparation blocked reason={} budget={}",
+            com.demo.logging.Logging.logger(AgentLoop.class).warn("Conversation preparation blocked reason={} budget={}",
                     blocked.reason(), blocked.report().orElse(null));
             return complete(AgentRunResult.contextBlocked(blocked.getMessage(), iteration), events);
         } catch (com.demo.tools.process.ShellExecutionException fatal) {
@@ -136,7 +148,7 @@ public class AgentLoop {
         }
     }
 
-    private void execute(ToolCall call, Context context, int iteration, AgentCheckpoint checkpoint,
+    private void execute(ToolCall call, Conversation context, int iteration, AgentCheckpoint checkpoint,
                          com.demo.tools.ToolExecutionContext execution, AgentEventLog events) {
         CancellationToken token = execution.token();
         Tool tool = tools.get(call.getToolName());
@@ -167,7 +179,7 @@ public class AgentLoop {
         record(call, result, context, iteration, checkpoint, events);
     }
 
-    private void record(ToolCall call, ToolResult result, Context context, int iteration,
+    private void record(ToolCall call, ToolResult result, Conversation context, int iteration,
                         AgentCheckpoint checkpoint, AgentEventLog events) {
         context.addToolResult(call, result);
         checkpoint.save(context, iteration);

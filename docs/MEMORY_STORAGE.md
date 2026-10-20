@@ -1,6 +1,6 @@
 # Memory 存储接口（阶段 2）
 
-存储可独立测试，构造入口使用显式目录，不会自行访问用户全局记忆。阶段 4 已通过 `SessionArchiveCoordinator` 接入前台自动压缩；阶段 5 已接入只读历史搜索/读取与 CLI 查看。长期提炼和后台任务尚未接入。
+存储可独立测试，构造入口使用显式目录，不会自行访问用户全局记忆。阶段 4 已通过 `SessionArchiveCoordinator` 接入前台自动压缩；阶段 5 已接入只读历史搜索/读取与 CLI 查看。阶段 6、7 已接入 [长期提炼](MEMORY_CONSOLIDATION.md) 与 [后台维护](MEMORY_MAINTENANCE.md)。
 
 ## 长期记忆
 

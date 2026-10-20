@@ -11,6 +11,7 @@ public final class CliRenderer {
     public void welcome(Config config) {
         model = config.isConfigured() ? config.getModel() : "模拟模式（未调用真实模型）";
         terminal.print("=== 编程助手 ===" + (config.isConfigured() ? "" : "\n未配置模型密钥：不会调用真实模型或执行文件操作。"));
+        if(config.getMemory().enabled())terminal.print("分层记忆已启用；自动整理使用当前模型，可通过 /memory status 查看，MEMORY_ENABLED=false 关闭。");
         if (terminal instanceof PlainTerminalIO)
             terminal.print("普通行模式：使用 /cancel 取消任务；Ctrl+C 按操作系统退出信号处理。");
     }
@@ -77,6 +78,7 @@ public final class CliRenderer {
 
     public void memoryHelp() {
         terminal.print("/memory search <查询>  搜索当前项目的归档历史\n/memory read <序号>  查看上次搜索结果详情\n"
+                + "/memory show | status | pending | compact | consolidate\n/memory resolve 保留旧的 | 采用新的\n/memory approve project | global\n"
                 + "需开启 memory.enabled；查看结果不会自动加入对话。");
     }
 
@@ -108,6 +110,7 @@ public final class CliRenderer {
             case MEMORY_COMPACTION -> switch (((SessionEvent.MemoryCompaction) event.payload()).phase()) {
                 case STARTED -> "正在整理较早的会话，保留当前要求与未解决问题…";
                 case COMPLETED -> "会话摘要已保存。";
+                case CANCELLED -> "会话整理已取消，原始消息保留。";
                 case FAILED -> "本次会话整理未成功；仅在完整上下文仍能容纳时继续。";
             };
             case LLM_REQUEST_STARTED -> "正在请求模型…";
@@ -195,6 +198,16 @@ public final class CliRenderer {
         });
     }
     public void info(String message) { terminal.print(message); }
+    public void memoryEvent(com.demo.memory.MemoryTelemetry.Event event) {
+        if(event.origin()==com.demo.memory.MemoryTelemetry.Origin.FOREGROUND && event.operation()==com.demo.memory.MemoryTelemetry.Operation.COMPACTION)return;
+        if(event.phase()==com.demo.memory.MemoryTelemetry.Phase.SKIPPED)return;
+        String origin=switch(event.origin()){case BACKGROUND->"后台";case MANUAL->"手动";case FOREGROUND->"轮末";};
+        String operation=event.operation()==com.demo.memory.MemoryTelemetry.Operation.COMPACTION?"会话整理":"知识提炼";
+        String phase=switch(event.phase()){
+            case STARTED->"进行中…";case SUCCEEDED->"已完成。";case FAILED->"未完成，原始记录保留，可稍后重试。";
+            case CANCELLED->"已取消，原始记录保留。";case SKIPPED->"已跳过。";};
+        terminal.printAbove(origin+operation+phase);
+    }
     public void error(String message) { terminal.error("错误：" + message); }
     public void failure(Throwable error) {
         error(ChineseMessages.failure(error));

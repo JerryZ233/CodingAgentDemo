@@ -10,7 +10,7 @@ import java.util.Objects;
  * Structured description of a tool used by both prompts and LLM API schemas.
  */
 public final class ToolSpec {
-    public enum Capability { FILE_READ, FILE_WRITE, DIRECTORY_LIST, PROCESS_EXECUTE, NETWORK, MEMORY_READ }
+    public enum Capability { FILE_READ, FILE_WRITE, DIRECTORY_LIST, PROCESS_EXECUTE, NETWORK, MEMORY_READ, MEMORY_WRITE }
     private final java.util.Set<Capability> capabilities;
     public java.util.Set<Capability> getCapabilities() { return capabilities; }
 

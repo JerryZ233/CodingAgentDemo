@@ -1,8 +1,9 @@
 package com.demo.cli;
 
+import com.demo.memory.MemoryHarness;
+import com.demo.memory.model.HistoryEntry;
 import com.demo.config.*;
 import com.demo.llm.LLMClient;
-import com.demo.memory.*;
 import com.demo.memory.storage.*;
 import com.demo.model.Message;
 import com.demo.session.*;
@@ -58,7 +59,7 @@ class CliMemoryIntegrationTest {
 
     @Test void memoryHelpInWorkspaceSelectionIsNotTreatedAsADirectory() {
         var output = new StringWriter();
-        try (var service = new DefaultSessionService(Config.defaults(), (input, tools) -> new LLMClient.LLMResponse("done", null),
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), (input, tools) -> new LLMClient.LLMResponse("done", null),
                     new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC());
              var terminal = new PlainTerminalIO(new StringReader(""), new PrintWriter(output), new PrintWriter(output));
              var pump = new RunEventPump(service, new CliRenderer(terminal))) {

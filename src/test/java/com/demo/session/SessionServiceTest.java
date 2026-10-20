@@ -31,7 +31,7 @@ class SessionServiceTest {
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-15T10:00:00Z"), ZoneOffset.UTC);
 
     private DefaultSessionService service(LLMClient model, SessionRepository repository) {
-        return new DefaultSessionService(Config.defaults(), model, repository, clock);
+        return new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, clock);
     }
 
     private LLMClient textModel() { return (messages, tools) -> new LLMClient.LLMResponse("done", null); }
@@ -230,14 +230,14 @@ class SessionServiceTest {
 
     @Test
     void maximumIterationsEndsTurnAndAllowsNextRequest() {
-        Config defaults = Config.defaults();
+        Config defaults = com.demo.testing.TestConfigs.defaults();
         Config config = new Config(defaults.getApiUrl(), defaults.getModel(), "", defaults.getMaxTokens(),
                 defaults.getTemperature(), 1, defaults.getWorkspaceDir(), defaults.getEnabledTools());
         AtomicInteger calls = new AtomicInteger();
         LLMClient model = (messages, tools) -> calls.getAndIncrement() == 0
                 ? new LLMClient.LLMResponse(null, List.of(new ToolCall("missing", "{}")))
                 : new LLMClient.LLMResponse("next turn", null);
-        try (var service = new DefaultSessionService(config, model,
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(config), model,
                 new JsonSessionRepository(temp.resolve("sessions")), clock)) {
             String id = service.createSession(temp).id();
             assertEquals(SessionRun.Status.MAX_ITERATIONS, service.runTurn(id, "first").lastRun().status());
@@ -278,7 +278,7 @@ class SessionServiceTest {
             public Instant instant() { return clock.instant().plusSeconds(reads.getAndIncrement() == 1 ? 10 : 0); }
         };
         var repository = new JsonSessionRepository(temp.resolve("sessions"));
-        try (var service = new DefaultSessionService(Config.defaults(), textModel(), repository, movingClock)) {
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), textModel(), repository, movingClock)) {
             String id = service.createSession(temp).id();
             var finished = service.runTurn(id, "work");
             assertFalse(finished.updatedAt().isBefore(finished.lastRun().startedAt()));
@@ -294,7 +294,7 @@ class SessionServiceTest {
             public void close() { closed.incrementAndGet(); }
         };
         FaultRepository repository = new FaultRepository(temp.resolve("sessions"));
-        var service = new DefaultSessionService(Config.defaults(), model, repository, clock,
+        var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, clock,
                 DefaultSessionService.ClientOwnership.OWNED);
         var session = service.createSession(temp);
         repository.failAt = 2;

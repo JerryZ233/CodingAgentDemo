@@ -45,6 +45,20 @@ public interface LLMClient extends AutoCloseable {
         java.util.Objects.requireNonNull(purpose);
         return sendMessage(messages, toolsDescription, token, onRetry);
     }
+
+    /** Request-local observation; SDK implementations report every actual transport attempt. */
+    default LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token,
+            java.util.function.Consumer<LLMFailure> onRetry, RequestPurpose purpose,
+            java.util.function.Consumer<RequestAttempt> attempts) {
+        token.throwIfCancellationRequested();
+        long started = System.nanoTime();
+        LLMResponse response = null;
+        try { return response = sendMessage(messages, toolsDescription, token, onRetry, purpose); }
+        finally {
+            attempts.accept(new RequestAttempt(1, (System.nanoTime() - started) / 1_000_000,
+                    response == null ? null : response.getUsage().orElse(null), response != null, purpose));
+        }
+    }
     
     /**
      * Response from the LLM containing text and/or tool calls.

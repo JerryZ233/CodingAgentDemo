@@ -1,8 +1,8 @@
 package com.demo.tools.builtin;
 
 import com.demo.execution.*;
-import com.demo.memory.HistoryAccessException;
-import com.demo.memory.HistorySearchService;
+import com.demo.memory.history.HistoryAccessException;
+import com.demo.memory.history.HistorySearchService;
 import com.demo.model.ToolResult;
 import com.demo.tools.*;
 import com.demo.tools.support.*;

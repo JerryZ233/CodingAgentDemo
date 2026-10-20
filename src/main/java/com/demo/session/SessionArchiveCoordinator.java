@@ -1,8 +1,8 @@
 package com.demo.session;
 
-import com.demo.memory.CompactionException;
-import com.demo.memory.HistoryEntry;
-import com.demo.memory.SessionArchiveAccess;
+import com.demo.memory.compaction.CompactionException;
+import com.demo.memory.model.HistoryEntry;
+import com.demo.memory.compaction.SessionArchiveAccess;
 import com.demo.memory.storage.ArchiveCommitter;
 import com.demo.memory.storage.HistoryRepository;
 import com.demo.memory.storage.MemoryStorageException;
@@ -69,7 +69,7 @@ final class SessionArchiveCoordinator implements SessionArchiveAccess {
         session.updatedAt = replacement.updatedAt();
         session.persisted = replacement;
         session.unsaved = false;
-        session.publish(); // Keep the same Context reference held by AgentLoop.
+        session.publish(); // Keep the same Conversation reference held by AgentLoop.
     }
 
     private boolean sameContentAndRun(SessionSnapshot left, SessionSnapshot right) {

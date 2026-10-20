@@ -11,14 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class MemoryConfigTest {
     @TempDir Path temp;
 
-    @Test void defaultsKeepIncompleteHarnessOffAndReserveOutput() {
+    @Test void defaultsEnableCompleteHarnessAndReserveOutputWithExplicitOptOut() {
         var config = ConfigLoader.from(Map.of(), Map.of());
-        assertFalse(config.getMemory().enabled());
+        assertTrue(config.getMemory().enabled());
         assertEquals(24, config.getMemory().maintenance().minIntervalHours());
         assertEquals(60, config.getMemory().maintenance().scanIntervalSeconds());
         assertEquals(28_672, config.getMemory().inputBudgetTokens(2_048));
-        assertTrue(config.withMemory(config.getMemory().withEnabled(true)).getMemory().enabled());
-        assertFalse(config.getMemory().enabled());
+        assertFalse(config.withMemory(config.getMemory().withEnabled(false)).getMemory().enabled());
+        assertTrue(config.getMemory().enabled());
     }
 
     @Test void environmentOverridesNestedYamlAndBlankEnvironmentIsIgnored() {

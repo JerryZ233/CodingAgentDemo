@@ -3,7 +3,7 @@ package com.demo.session;
 import com.demo.config.Config;
 import com.demo.config.MemoryConfig;
 import com.demo.llm.LLMClient;
-import com.demo.memory.HistoryEntry;
+import com.demo.memory.model.HistoryEntry;
 import com.demo.memory.MemoryHarness;
 import com.demo.memory.storage.ArchiveCommitter;
 import com.demo.memory.storage.HistoryRepository;
@@ -183,24 +183,26 @@ class ContextPreparationIntegrationTest {
             return new LLMClient.LLMResponse(null, List.of(new ToolCall("many", "list_files", "{}")));
         };
         // Use a fake tool to exceed the budget without changing production tool output limits.
-        var context = new com.demo.agent.Context();
+        var context = new com.demo.agent.Conversation();
         context.addUserMessage("work");
-        context.setPreparation((state, token) -> {
-            return new com.demo.memory.ContextAssembler(new com.demo.memory.TokenEstimator(),
-                    new com.demo.memory.ContextBudget(enabled().getMemory(), 2048))
-                    .assemble("", "[]", "", "", com.demo.memory.CompressionState.empty(), state.getMessages());
-        });
+        com.demo.memory.context.ContextPreparation preparation = (state, token) -> {
+            return new com.demo.memory.context.ContextAssembler(new com.demo.memory.context.TokenEstimator(),
+                    new com.demo.memory.context.ContextBudget(enabled().getMemory(), 2048))
+                    .assemble("", "[]", "", "", com.demo.memory.context.CompressionState.empty(), state.messages());
+        };
         var tool = new com.demo.tools.Tool() {
             public String getName() { return "list_files"; }
             public String getDescription() { return "test"; }
             public com.demo.model.ToolResult execute(String arguments) { return com.demo.model.ToolResult.success(getName(), "中".repeat(40000)); }
         };
-        var result = new com.demo.agent.AgentLoop(model, java.util.Map.of("list_files", tool)).run(context);
+        var result = new com.demo.agent.AgentLoop(model, java.util.Map.of("list_files", tool)).run(context, com.demo.agent.AgentCheckpoint.noop(),
+                com.demo.tools.ToolExecutionContext.unavailable(com.demo.execution.CancellationToken.none()),
+                com.demo.agent.AgentEventLog.noop(), new com.demo.agent.PromptBuilder(), preparation);
         assertEquals(com.demo.agent.AgentRunResult.Status.CONTEXT_BLOCKED, result.getStatus());
         assertEquals(1, calls.get());
         assertEquals(3, context.getMessages().size());
         assertEquals(40000, context.getMessages().get(2).getContent().length());
-        assertTrue(new com.demo.memory.ConversationBlockBuilder().build(context.getMessages()).stream().allMatch(block -> block.complete()));
+        assertTrue(new com.demo.memory.context.ConversationBlockBuilder().build(context.getMessages()).stream().allMatch(block -> block.complete()));
     }
 
     @Test void malformedMemoryBlocksAndDoesNotLeakFileContentToTranscript() throws Exception {
@@ -221,7 +223,7 @@ class ContextPreparationIntegrationTest {
         Path memory = Files.createDirectories(temp.resolve(".coding-agent"));
         Files.writeString(memory.resolve("MEMORY.md"), "<!-- memory:item invalid -->");
         var sessions = repository();
-        try (var service = service(Config.defaults(), (messages, tools) -> new LLMClient.LLMResponse("done", null), sessions)) {
+        try (var service = service(com.demo.testing.TestConfigs.defaults(), (messages, tools) -> new LLMClient.LLMResponse("done", null), sessions)) {
             var run = service.submitTurn(service.createSession(temp).id(), "work");
             assertEquals(SessionRun.Status.COMPLETED, run.completion().toCompletableFuture().join().lastRun().status());
             assertFalse(run.eventsAfter(0).stream().anyMatch(event -> event.type() == SessionEvent.Type.CONTEXT_PREPARED));

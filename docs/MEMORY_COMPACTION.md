@@ -1,6 +1,6 @@
 # 自动压缩与连续摘要（阶段 4）
 
-`memory.enabled` 仍默认关闭。开启后，前台模型请求准备阶段会在达到触发阈值时自动整理较早消息。阶段 5 已提供 [历史检索工具](MEMORY_RETRIEVAL.md)；当前不执行长期知识提炼或旧会话后台回填。
+`memory.enabled` 默认开启。前台模型请求准备阶段会在达到触发阈值时自动整理较早消息。阶段 5 已提供 [历史检索工具](MEMORY_RETRIEVAL.md)，阶段 6、7 已接入 [长期提炼](MEMORY_CONSOLIDATION.md) 与 [旧会话维护](MEMORY_MAINTENANCE.md)。升级和关闭开关见 [运行说明](MEMORY_OPERATIONS.md)。
 
 ## 运行流程
 

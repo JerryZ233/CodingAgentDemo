@@ -1,9 +1,10 @@
 package com.demo.session;
 
+import com.demo.memory.MemoryHarness;
+import com.demo.memory.compaction.SummaryFixtures;
 import com.demo.config.*;
 import com.demo.execution.CancellationToken;
 import com.demo.llm.*;
-import com.demo.memory.*;
 import com.demo.memory.storage.HistoryRepository;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
@@ -22,7 +23,7 @@ class AutomaticCompactionIntegrationTest {
     private final Instant now = Instant.parse("2026-10-20T10:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     private final MemoryConfig memory = new MemoryConfig(true, 18000, 1000, .8, .6, 500, 500, 400, 2,
-            MemoryConfig.Consolidation.defaults(), MemoryConfig.Maintenance.defaults());
+            new MemoryConfig.Consolidation(false, 5, 10), new MemoryConfig.Maintenance(false, 24, 60));
     private final Config config = Config.defaults().withMemory(memory);
     private JsonSessionRepository repository;
 

@@ -32,6 +32,19 @@ llm:
   # Can be overridden by LLM_TEMPERATURE environment variable
   temperature: 0.7
 
+# Layered memory (environment: MEMORY_ENABLED, MEMORY_MAINTENANCE_ENABLED, etc.)
+# Automatic maintenance uses the configured model. Disable to retain the legacy window.
+memory:
+  enabled: true
+  consolidation:
+    enabled: true
+    new_history_threshold: 5
+    batch_size: 10
+  maintenance:
+    enabled: true
+    min_interval_hours: 24
+    scan_interval_seconds: 60
+
 # Agent Configuration
 agent:
   # Maximum iterations for agent loop

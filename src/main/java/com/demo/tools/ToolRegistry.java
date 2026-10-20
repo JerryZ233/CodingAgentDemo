@@ -49,7 +49,7 @@ public final class ToolRegistry {
     }
 
     /** Memory tools are host services, enabled by memory.enabled rather than workspace tool names. */
-    public ToolRegistry withHistory(com.demo.memory.HistorySearchService history) {
+    public ToolRegistry withHistory(com.demo.memory.history.HistorySearchService history) {
         Map<String, Tool> combined = new LinkedHashMap<>(tools);
         if (combined.containsKey("memory_search") || combined.containsKey("memory_read")) {
             throw new IllegalStateException("History tools already installed");
@@ -61,6 +61,14 @@ public final class ToolRegistry {
 
     public List<ToolSpec> getToolSpecs() {
         return toolSpecs;
+    }
+    public ToolRegistry withMemoryProposals(com.demo.memory.consolidation.ConsolidationService memory,
+            java.util.function.Supplier<com.demo.session.SessionSnapshot> snapshot, java.util.function.BooleanSupplier resolve) {
+        Map<String, Tool> combined = new LinkedHashMap<>(tools);
+        if (combined.containsKey("memory_propose")) throw new IllegalStateException("Memory proposal tools already installed");
+        combined.put("memory_propose", new MemoryProposeTool(memory, snapshot));
+        combined.put("memory_resolve_latest", new MemoryResolveLatestTool(resolve));
+        return new ToolRegistry(combined);
     }
 
     private static void registerIfEnabled(Map<String, Tool> tools, String name, Supplier<Tool> factory, Config config) {

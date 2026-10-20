@@ -32,6 +32,7 @@ class EvalToolProfilesTest {
 
     @Test void fileOnlyEvalProfileDoesNotExposeShellToModelOrExecution() throws Exception {
         Config config = profile("config-files.yaml");
+        assertFalse(config.getMemory().enabled());
         ToolRegistry registry = ToolRegistry.fromConfig(config, workspace);
         assertEquals(Set.of("read_file", "write_file", "list_files", "search_text"), registry.getTools().keySet());
         String schema = ToolDescriptions.toOpenAIToolsJson(registry.getToolSpecs());
@@ -42,6 +43,7 @@ class EvalToolProfilesTest {
 
     @Test void fullEvalProfileAlsoExposesShellAndKeepsModelDefaults() throws Exception {
         Config full = profile("config.yaml");
+        assertFalse(full.getMemory().enabled());
         Config files = profile("config-files.yaml");
         ToolRegistry registry = ToolRegistry.fromConfig(full, workspace);
         assertEquals(Set.of("read_file", "write_file", "list_files", "search_text", "run_shell"),

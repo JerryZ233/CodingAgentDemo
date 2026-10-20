@@ -127,9 +127,9 @@ class SessionDocumentCodecTest {
     @Test
     void organizedStateAndCompressionSurviveRoundTrip() {
         var base = fixture();
-        var compression = new com.demo.memory.CompressionState(base.messages().get(2).getId(),
+        var compression = new com.demo.memory.context.CompressionState(base.messages().get(2).getId(),
                 "history-1", "Keep the public API unchanged.", 1);
-        var state = new com.demo.memory.SessionMemoryState(base.contentRevision(), base.updatedAt(), compression);
+        var state = new com.demo.memory.context.SessionMemoryState(base.contentRevision(), base.updatedAt(), compression);
         var organized = new SessionSnapshot(base.id(), base.title(), base.workspace(), base.createdAt(),
                 base.updatedAt(), base.messages(), base.lastRun(), false, base.contentRevision(), state);
         var result = codec.decode(codec.encode(organized));

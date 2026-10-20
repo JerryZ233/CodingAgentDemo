@@ -56,3 +56,23 @@ tasks.named<JavaExec>("run") {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
+
+// Deterministic memory acceptance only: scripted clients/local HTTP, no paid model evaluations.
+tasks.register<Test>("memoryTest") {
+    description = "Runs isolated layered-memory acceptance tests without real model APIs"
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    include("com/demo/memory/**", "com/demo/session/*Memory*Test.class",
+            "com/demo/session/AutomaticCompactionIntegrationTest.class", "com/demo/session/HistoryRetrievalIntegrationTest.class",
+            "com/demo/session/ContextPreparationIntegrationTest.class", "com/demo/cli/*Memory*Test.class",
+            "com/demo/llm/ObservedLLMClientTest.class", "com/demo/llm/impl/OpenAICompatibleLLMClientTest.class")
+    val testTemp = layout.buildDirectory.dir("memory-test-temp")
+    doFirst { testTemp.get().asFile.mkdirs() }
+    systemProperty("java.io.tmpdir", testTemp.get().asFile.absolutePath)
+    systemProperty("junit.jupiter.tempdir.factory.default", "com.demo.testing.RetryingTempDirectories")
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
+    systemProperty("coding.agent.log.dir", layout.buildDirectory.dir("memory-test-logs").get().asFile.absolutePath)
+    systemProperty("coding.agent.test.classpath", sourceSets.main.get().runtimeClasspath.asPath)
+}

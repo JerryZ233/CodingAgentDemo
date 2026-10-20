@@ -71,7 +71,7 @@ class SessionRecoveryTest {
         var source = snapshot(List.of(Message.user("work")), SessionRun.started(now));
         var organized = new SessionSnapshot(source.id(), source.title(), source.workspace(), source.createdAt(),
                 source.updatedAt(), source.messages(), source.lastRun(), false, 10,
-                new com.demo.memory.SessionMemoryState(10, now, com.demo.memory.CompressionState.empty()));
+                new com.demo.memory.context.SessionMemoryState(10, now, com.demo.memory.context.CompressionState.empty()));
         var repaired = recovery.recover(organized, now.plusSeconds(1)).snapshot();
         assertEquals(10, repaired.contentRevision());
         assertEquals(organized.memoryState(), repaired.memoryState());

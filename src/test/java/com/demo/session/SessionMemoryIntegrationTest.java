@@ -2,8 +2,8 @@ package com.demo.session;
 
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
-import com.demo.memory.CompressionState;
-import com.demo.memory.SessionMemoryState;
+import com.demo.memory.context.CompressionState;
+import com.demo.memory.context.SessionMemoryState;
 import com.demo.model.Message;
 import com.demo.session.storage.JsonSessionRepository;
 import java.nio.file.Files;
@@ -32,7 +32,7 @@ class SessionMemoryIntegrationTest {
                 SessionRun.started(now).finish(SessionRun.Status.COMPLETED, now, "Understood"), false, 20, memory));
         LLMClient model = (messages, tools) -> new LLMClient.LLMResponse("done", null);
         byte[] before = Files.readAllBytes(temp.resolve("sessions").resolve(id + ".json"));
-        try (var service = new DefaultSessionService(Config.defaults(), model, repository, clock)) {
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, clock)) {
             assertFalse(service.getSession(id).dirty());
             service.listSessions();
             assertArrayEquals(before, Files.readAllBytes(temp.resolve("sessions").resolve(id + ".json")));
@@ -44,7 +44,7 @@ class SessionMemoryIntegrationTest {
             assertEquals(history.get(1).getId(), result.messages().get(1).getId());
             assertEquals(22, service.retrySave(id).contentRevision());
         }
-        try (var restored = new DefaultSessionService(Config.defaults(), model, repository, clock)) {
+        try (var restored = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, clock)) {
             assertEquals(22, restored.getSession(id).contentRevision());
             assertEquals(memory, restored.getSession(id).memoryState());
             assertEquals(4, restored.getSession(id).messages().size());

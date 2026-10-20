@@ -94,7 +94,7 @@ class AsyncSessionServiceTest {
             }
             public void close() { closed.incrementAndGet(); }
         };
-        var service = new DefaultSessionService(Config.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")),
+        var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")),
                 Clock.systemUTC(), DefaultSessionService.ClientOwnership.OWNED);
         String id = service.createSession(temp).id();
         RunHandle run = service.submitTurn(id, "first");
@@ -114,7 +114,7 @@ class AsyncSessionServiceTest {
             await(release);
             return new LLMClient.LLMResponse("late", null);
         };
-        var service = new DefaultSessionService(Config.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")),
+        var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")),
                 Clock.systemUTC(), DefaultSessionService.ClientOwnership.BORROWED, Executors.newSingleThreadExecutor(), Duration.ofMillis(100));
         String id = service.createSession(temp).id();
         RunHandle run = service.submitTurn(id, "work");
@@ -132,7 +132,7 @@ class AsyncSessionServiceTest {
     @Test void rejectedSchedulingDoesNotAppendHistoryOrLeaveActiveRun() {
         var executor = Executors.newSingleThreadExecutor();
         executor.shutdown();
-        try (var service = new DefaultSessionService(Config.defaults(), (messages, tools) -> null,
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), (messages, tools) -> null,
                 new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC(),
                 DefaultSessionService.ClientOwnership.BORROWED, executor, Duration.ofSeconds(1))) {
             String id = service.createSession(temp).id();
@@ -150,7 +150,7 @@ class AsyncSessionServiceTest {
         executor.submit(() -> { blocked.countDown(); await(release); });
         assertTrue(blocked.await(3, TimeUnit.SECONDS));
         AtomicInteger calls = new AtomicInteger();
-        try (var service = new DefaultSessionService(Config.defaults(), (messages, tools) -> {
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), (messages, tools) -> {
             calls.incrementAndGet(); return new LLMClient.LLMResponse("done", null);
         }, new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC(),
                 DefaultSessionService.ClientOwnership.BORROWED, executor, Duration.ofSeconds(5))) {
@@ -182,7 +182,7 @@ class AsyncSessionServiceTest {
     }
 
     private DefaultSessionService service(LLMClient model) {
-        return new DefaultSessionService(Config.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC());
+        return new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC());
     }
     private LLMClient cooperativeModel(CountDownLatch entered, CountDownLatch release, AtomicInteger calls) {
         return new LLMClient() {

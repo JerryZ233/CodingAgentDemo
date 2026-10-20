@@ -61,7 +61,7 @@ class LoggingTest {
                 ? new LLMClient.LLMResponse("自然语言回复😀", null)
                 : new LLMClient.LLMResponse("中间说明", List.of(new ToolCall("read_file", "{\"path\":\"example.txt\"}")));
         Files.writeString(workspace.resolve("example.txt"), "private-tool-marker中文");
-        try (var service = new DefaultSessionService(Config.defaults(), client,
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), client,
                 new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC())) {
             firstId = service.createSession(workspace).id();
             service.runTurn(firstId, "读取文件");

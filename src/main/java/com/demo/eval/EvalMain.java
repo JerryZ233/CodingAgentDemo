@@ -69,6 +69,9 @@ public final class EvalMain {
     /** Owns the injected client. Kept separate for deterministic integration tests without paid calls. */
     static int execute(Config config, LLMClient client, Options options, EvalMetrics metrics,
                        Map<String, Object> result) throws Exception {
+        // Coding benchmarks stay comparable and never backfill unrelated sessions or user memory.
+        config = config.withMemory(config.getMemory().withEnabled(false));
+        result.put("memory_enabled", false);
         try (var sessions = new DefaultSessionService(config, client,
                 new JsonSessionRepository(options.output().resolve("sessions")), Clock.systemUTC(),
                 DefaultSessionService.ClientOwnership.OWNED)) {

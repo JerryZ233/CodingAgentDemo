@@ -16,11 +16,20 @@ public interface SessionService extends AutoCloseable {
     RunHandle submitTurn(String id, String message);
     default RunHandle submitTurn(String id, String message, RunOptions options) { return submitTurn(id,message); }
     Optional<RunHandle> getActiveRun();
+    default java.util.Map<com.demo.llm.RequestPurpose,com.demo.memory.MemoryTelemetry.Usage> modelUsage() { return java.util.Map.of(); }
+    default com.demo.memory.MemoryTelemetry.Page memoryEventsAfter(String id,long sequence) { return com.demo.memory.MemoryTelemetry.Page.empty(); }
+    default String memoryCommand(String id, String command) { return "记忆维护未开启。"; }
+    default boolean resolveMemoryReply(String id, String reply) { return false; }
+    default String nextMemoryCandidate(String id) { return ""; }
+    default boolean cancelMemoryMaintenance() { return false; }
+    default java.util.concurrent.CompletionStage<String> requestMemoryMaintenance(String id, String operation) {
+        return java.util.concurrent.CompletableFuture.completedFuture("记忆维护未开启。");
+    }
     default com.google.gson.JsonObject searchHistory(String id, String query) {
-        throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+        throw new com.demo.memory.history.HistoryAccessException(com.demo.memory.history.HistoryAccessException.Reason.DISABLED);
     }
     default com.google.gson.JsonObject readHistory(String id, String historyId, boolean includeSources) {
-        throw new com.demo.memory.HistoryAccessException(com.demo.memory.HistoryAccessException.Reason.DISABLED);
+        throw new com.demo.memory.history.HistoryAccessException(com.demo.memory.history.HistoryAccessException.Reason.DISABLED);
     }
     /** Repairs interrupted protocol blocks and saves without resuming the failed turn. */
     SessionSnapshot retrySave(String id);

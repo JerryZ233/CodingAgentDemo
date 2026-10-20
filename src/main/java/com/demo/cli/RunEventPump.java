@@ -22,6 +22,19 @@ public final class RunEventPump implements AutoCloseable {
     private Display current;
     private Outcome latest;
     private boolean serviceClosed;
+    private String memorySession;
+    private long memoryCursor;
+    public synchronized void watchMemory(String id) {
+        memorySession=id;
+        memoryCursor=service.memoryEventsAfter(id,Long.MAX_VALUE).nextSequence();
+    }
+    private void pollMemory() {
+        if (serviceClosed || memorySession==null) return;
+        var page=service.memoryEventsAfter(memorySession,memoryCursor);
+        if(page.gap())renderer.info("部分记忆维护进度已归档到日志，可用 /memory status 查看当前用量。");
+        for(var event:page.events())renderer.memoryEvent(event);
+        memoryCursor=page.nextSequence();
+    }
     public RunEventPump(SessionService service, CliRenderer renderer) {
         this.service = service;
         this.renderer = renderer;
@@ -43,8 +56,9 @@ public final class RunEventPump implements AutoCloseable {
     public synchronized Outcome outcome() { poll(); return latest; }
     public synchronized void poll() {
         Display display = current;
-        if (display == null) return;
+        if (display == null) { pollMemory(); return; }
         drain(display);
+        pollMemory();
         if (!display.completion.isDone()) return;
         drain(display);
         if (!display.terminal) return;

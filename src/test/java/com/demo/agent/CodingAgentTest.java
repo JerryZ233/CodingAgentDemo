@@ -19,14 +19,14 @@ class CodingAgentTest {
             return new com.demo.llm.LLMClient.LLMResponse("done", null);
         };
         CodingAgent agent = new CodingAgent(model, com.demo.tools.ToolRegistry.fromConfig(Config.defaults()), 3);
-        Context context = Context.fromMessages(java.util.List.of(
+        Conversation context = Conversation.fromMessages(java.util.List.of(
                 com.demo.model.Message.user("first"), com.demo.model.Message.assistant("previous answer"),
                 com.demo.model.Message.user("second")));
         var checkpoints = new java.util.ArrayList<Integer>();
         assertTrue(agent.runTurn(context, (state, iteration) -> checkpoints.add(iteration)).isCompleted());
         org.junit.jupiter.api.Assertions.assertEquals(4, context.getMessages().size());
         org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(1), checkpoints);
-        assertTrue(context.getToolDescriptions().contains("read_file"));
+        assertTrue(agent.getToolDescriptions().contains("read_file"));
     }
 
     @Test
@@ -54,11 +54,15 @@ class CodingAgentTest {
     @Test
     @DisplayName("Conversation prompt includes required parameters from tool specs")
     void conversationPromptIncludesRequiredParametersFromToolSpecs() {
-        CodingAgent agent = agent(Config.defaults());
-        Context external = new Context();
+        var capturedPrompt = new java.util.concurrent.atomic.AtomicReference<String>();
+        CodingAgent agent = new CodingAgent((messages, tools) -> {
+            capturedPrompt.set(messages.get(0).getContent());
+            return new com.demo.llm.LLMClient.LLMResponse("done", null);
+        }, com.demo.tools.ToolRegistry.fromConfig(Config.defaults()), 3);
+        Conversation external = new Conversation();
         external.addUserMessage("inspect tools");
         agent.runTurn(external, AgentCheckpoint.noop());
-        String prompt = external.buildSystemPrompt();
+        String prompt = capturedPrompt.get();
 
         assertTrue(prompt.contains("read_file"));
         assertTrue(prompt.contains("Required parameters: path."));

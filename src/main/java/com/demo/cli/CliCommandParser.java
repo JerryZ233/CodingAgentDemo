@@ -40,6 +40,11 @@ public final class CliCommandParser {
     private static CliCommand memory(String argument) {
         if (argument.isEmpty() || argument.equalsIgnoreCase("help")) return new CliCommand.MemoryHelp();
         String[] parts = argument.split("\\s+", 2);
+        if (parts.length == 1 && java.util.Set.of("show", "status", "pending", "compact", "consolidate").contains(parts[0].toLowerCase(Locale.ROOT)))
+            return new CliCommand.MemoryAction(parts[0].toLowerCase(Locale.ROOT));
+        if (parts.length == 2 && parts[0].equalsIgnoreCase("resolve")) return new CliCommand.MemoryResolve(parts[1]);
+        if (parts.length == 2 && parts[0].equalsIgnoreCase("approve")) return new CliCommand.MemoryResolve(
+                parts[1].equalsIgnoreCase("global") ? "批准全局记忆" : parts[1].equalsIgnoreCase("project") ? "批准项目记忆" : parts[1]);
         if (parts.length == 2 && parts[0].equalsIgnoreCase("search") && !parts[1].isBlank()) {
             return new CliCommand.MemorySearch(parts[1].strip());
         }

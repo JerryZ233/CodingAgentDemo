@@ -1,6 +1,6 @@
 # 项目历史检索（阶段 5）
 
-默认仍为 `memory.enabled=false`。开启后，`SessionService` 在既有文件工具上附加 `memory_search` 和 `memory_read`。两者为宿主提供的只读服务，不通过 `tools.enabled` 配置文件路径或其他项目身份，也不启动模型整理或后台扫描。
+默认 `memory.enabled=true`。`SessionService` 在既有文件工具上附加 `memory_search` 和 `memory_read`。两者为宿主提供的只读服务，不通过 `tools.enabled` 配置文件路径或其他项目身份；检索调用本身不启动模型整理或后台扫描。整体维护开关见 [运行说明](MEMORY_OPERATIONS.md)。
 
 ## Agent 用法
 

@@ -1,7 +1,7 @@
 package com.demo.memory.storage;
 
-import com.demo.memory.MemoryEdit;
-import com.demo.memory.MemoryUpdate;
+import com.demo.memory.model.MemoryEdit;
+import com.demo.memory.model.MemoryUpdate;
 import com.demo.storage.StorageFiles;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -30,6 +30,13 @@ public class LongTermMemoryRepository {
         try { return readDocument(); }
         catch (IOException | SecurityException failure) { throw MemoryStorageException.io(failure); }
         catch (IllegalArgumentException failure) { throw MemoryStorageException.malformed(failure); }
+    }
+    public java.util.Optional<MemoryUpdate> pendingUpdate() {
+        try {
+            var bytes = files.read(PENDING);
+            return bytes.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(MemoryJson.decode(bytes.get(), Transaction.class).update());
+        }
+        catch (IOException failure) { throw MemoryStorageException.io(failure); }
     }
 
     private MemoryDocument readDocument() throws IOException {
@@ -62,6 +69,13 @@ public class LongTermMemoryRepository {
             return readDocument();
         } catch (IOException | SecurityException failure) { throw MemoryStorageException.io(failure); }
         catch (IllegalArgumentException failure) { throw MemoryStorageException.malformed(failure); }
+    }
+
+    /** Pure preview for host budget checks and preparing a recoverable sequence. */
+    public MemoryDocument preview(MemoryDocument before, List<MemoryEdit> edits) {
+        String after = markdown.apply(before.text(), edits);
+        boolean exists = before.exists() || edits.stream().anyMatch(e -> e.action() != MemoryEdit.Action.IGNORE);
+        return new MemoryDocument(exists, exists ? MemoryJson.version(after) : "missing", after, markdown.read(after));
     }
 
     /** Explicit write operation; ordinary reads are safe in read-only clones. */

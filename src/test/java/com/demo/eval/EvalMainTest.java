@@ -37,6 +37,8 @@ class EvalMainTest {
         assertEquals(0, EvalMain.execute(config(Set.of("write_file")), client, options, metrics, result));
         assertEquals("42", Files.readString(options.workspace().resolve("answer.txt")));
         assertEquals("COMPLETED", result.get("agent_status"));
+        assertEquals(false, result.get("memory_enabled"));
+        assertFalse(Files.exists(options.workspace().resolve(".coding-agent")));
         assertEquals(2, result.get("iterations"));
         assertTrue(Files.readString(options.output().resolve("events.jsonl")).contains("TOOL_RESULT"));
         try (var files = Files.list(options.output().resolve("sessions"))) {

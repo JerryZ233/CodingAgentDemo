@@ -1,6 +1,6 @@
 package com.demo.memory.storage;
 
-import com.demo.memory.HistoryEntry;
+import com.demo.memory.model.HistoryEntry;
 import com.demo.model.Message;
 import com.demo.storage.StorageFiles;
 import java.io.IOException;

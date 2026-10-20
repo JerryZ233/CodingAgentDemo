@@ -10,6 +10,8 @@ public sealed interface CliCommand {
     record MemoryHelp() implements CliCommand {}
     record MemorySearch(String query) implements CliCommand {}
     record MemoryRead(int index) implements CliCommand {}
+    record MemoryAction(String action) implements CliCommand {}
+    record MemoryResolve(String reply) implements CliCommand {}
     record Status() implements CliCommand {}
     record Revoke() implements CliCommand {}
     record Cancel() implements CliCommand {}

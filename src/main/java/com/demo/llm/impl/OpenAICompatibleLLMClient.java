@@ -109,6 +109,13 @@ public class OpenAICompatibleLLMClient implements LLMClient {
     @Override
     public LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token,
                                   Consumer<LLMFailure> onRetry, com.demo.llm.RequestPurpose purpose) {
+        return sendMessage(messages, toolsDescription, token, onRetry, purpose, ignored -> {});
+    }
+
+    @Override
+    public LLMResponse sendMessage(List<Message> messages, String toolsDescription, CancellationToken token,
+            Consumer<LLMFailure> onRetry, com.demo.llm.RequestPurpose purpose,
+            Consumer<com.demo.llm.RequestAttempt> requestObserver) {
         java.util.Objects.requireNonNull(purpose);
         checkActive(token);
         final com.openai.models.chat.completions.ChatCompletionCreateParams params;
@@ -171,8 +178,10 @@ public class OpenAICompatibleLLMClient implements LLMClient {
                 checkActive(token);
                 error = errors.local(invalid, LLMError.Source.RESPONSE);
             } finally {
-                attemptObserver.accept(new com.demo.llm.RequestAttempt(attempt,
-                        (System.nanoTime() - started) / 1_000_000, usage, responseReceived, purpose));
+                var observation = new com.demo.llm.RequestAttempt(attempt,
+                        (System.nanoTime() - started) / 1_000_000, usage, responseReceived, purpose);
+                try { attemptObserver.accept(observation); }
+                finally { requestObserver.accept(observation); }
             }
             checkActive(token);
             if (!error.retryable()) return failure(error, attempt, LLMFailure.State.NON_RETRYABLE);

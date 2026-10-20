@@ -1,9 +1,9 @@
 package com.demo.memory.storage;
 
-import com.demo.memory.MemoryEdit;
-import com.demo.memory.MemoryItem;
-import com.demo.memory.MemorySource;
-import com.demo.memory.MemoryUpdate;
+import com.demo.memory.model.MemoryEdit;
+import com.demo.memory.model.MemoryItem;
+import com.demo.memory.model.MemorySource;
+import com.demo.memory.model.MemoryUpdate;
 import com.demo.storage.StorageFiles;
 import java.io.IOException;
 import java.nio.file.Files;

@@ -50,7 +50,7 @@ class SessionCancellationIntegrationTest {
                     new ToolCall("a", "write_file", "{\"path\":\"a.txt\",\"content\":\"done\"}"),
                     new ToolCall("b", "write_file", "{\"path\":\"b.txt\",\"content\":\"not done\"}")));
         };
-        try (var service = new DefaultSessionService(Config.defaults(), model, repository, Clock.systemUTC())) {
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, Clock.systemUTC())) {
             String id = service.createSession(temp).id();
             RunHandle run = service.submitTurn(id, "write both");
             handle.set(run);
@@ -78,7 +78,7 @@ class SessionCancellationIntegrationTest {
             return new LLMClient.LLMResponse("late text", List.of(new ToolCall("write_file",
                     "{\"path\":\"late.txt\",\"content\":\"must not write\"}")));
         };
-        try (var service = new DefaultSessionService(Config.defaults(), model,
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model,
                 new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC())) {
             String id = service.createSession(temp).id();
             var run = service.submitTurn(id, "work");
@@ -105,7 +105,7 @@ class SessionCancellationIntegrationTest {
             public SessionCatalog list() { return disk.list(); }
         };
         LLMClient model = (messages, tools) -> { entered.countDown(); await(proceed); return new LLMClient.LLMResponse("late", null); };
-        try (var service = new DefaultSessionService(Config.defaults(), model, repository, Clock.systemUTC())) {
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, Clock.systemUTC())) {
             String id = service.createSession(temp).id();
             var run = service.submitTurn(id, "work");
             assertTrue(entered.await(3, TimeUnit.SECONDS));
@@ -148,7 +148,7 @@ class SessionCancellationIntegrationTest {
                 }
             }
         };
-        var service = new DefaultSessionService(Config.defaults(), model, repository, Clock.systemUTC());
+        var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, Clock.systemUTC());
         try {
             String id = service.createSession(temp).id();
             var run = service.submitTurn(id, "work");
@@ -168,7 +168,7 @@ class SessionCancellationIntegrationTest {
     }
 
     @Test void finalAnswerIsPublishedExactlyOnceAndTerminalEventHasNoDuplicateAnswer() throws Exception {
-        try (var service = new DefaultSessionService(Config.defaults(), (messages, tools) -> new LLMClient.LLMResponse("final", null),
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), (messages, tools) -> new LLMClient.LLMResponse("final", null),
                 new JsonSessionRepository(temp.resolve("sessions")), Clock.systemUTC())) {
             String id = service.createSession(temp).id();
             var run = service.submitTurn(id, "work");
@@ -198,7 +198,7 @@ class SessionCancellationIntegrationTest {
             public SessionSnapshot load(String id) { return disk.load(id); }
             public SessionCatalog list() { return disk.list(); }
         };
-        try (var service = new DefaultSessionService(Config.defaults(), (messages, tools) -> new LLMClient.LLMResponse("done", null),
+        try (var service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), (messages, tools) -> new LLMClient.LLMResponse("done", null),
                 repository, Clock.systemUTC())) {
             String id = service.createSession(temp).id();
             var run = service.submitTurn(id, "work");

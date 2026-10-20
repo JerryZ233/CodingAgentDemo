@@ -34,8 +34,15 @@ public final class CliController {
     private void select(SessionSnapshot snapshot) {
         historyIds = java.util.List.of();
         sessionId = snapshot.id(); phase = Phase.INTERACTIVE; renderer.session(snapshot);
+        pump.watchMemory(sessionId);
     }
-    public String prompt() { return phase == Phase.SELECTING_WORKSPACE ? "目录 > " : "agent > "; }
+    public String prompt() {
+        if (sessionId != null && pump.active() == null && runOptions.approvalChannelAvailable()) {
+            try { String candidate = service.nextMemoryCandidate(sessionId); if (!candidate.isBlank()) renderer.info(candidate); }
+            catch (RuntimeException failure) { log.warn("Memory candidate display deferred"); }
+        }
+        return phase == Phase.SELECTING_WORKSPACE ? "目录 > " : "agent > ";
+    }
     public void accept(TerminalIO.Input input) {
         if (input.kind() == TerminalIO.Kind.WAKE) return;
         if (input.kind() == TerminalIO.Kind.EOF) {
@@ -97,8 +104,26 @@ public final class CliController {
             if (read.index() < 1 || read.index() > historyIds.size()) throw new CliInputException("请先使用 /memory search 搜索并选择结果序号。");
             renderer.memoryRead(service.readHistory(requireSession(), historyIds.get(read.index() - 1), false));
         }
-        else if (command instanceof CliCommand.Status) renderer.status(service.getSession(requireSession()), active);
-        else if (command instanceof CliCommand.Task task) pump.attach(service.submitTurn(requireSession(), task.text(),runOptions));
+        else if (command instanceof CliCommand.MemoryAction action) {
+            if (java.util.Set.of("compact", "consolidate").contains(action.action())) {
+                renderer.info("记忆维护已提交。");
+                service.requestMemoryMaintenance(requireSession(), action.action()).whenComplete((result, failure) -> {
+                    if (failure != null) renderer.error("记忆维护未完成；原始对话保留，可稍后重试。");
+                    else renderer.info(result);
+                });
+            } else renderer.info(service.memoryCommand(requireSession(), action.action()));
+        }
+        else if (command instanceof CliCommand.MemoryResolve resolve) {
+            renderer.info(service.resolveMemoryReply(requireSession(), resolve.reply()) ? "记忆候选已处理。" : "请先 /memory pending 查看候选，再明确选择处理方式。");
+        }
+        else if (command instanceof CliCommand.Status) {
+            renderer.status(service.getSession(requireSession()), active);
+            renderer.info(service.memoryCommand(requireSession(),"status"));
+        }
+        else if (command instanceof CliCommand.Task task) {
+            if (service.resolveMemoryReply(requireSession(), task.text())) renderer.info("记忆候选已处理。");
+            else pump.attach(service.submitTurn(requireSession(), task.text(),runOptions));
+        }
     }
     private String requireSession() {
         if (sessionId == null) throw new CliInputException("请先选择工作目录或使用 /resume 恢复会话");
@@ -111,7 +136,7 @@ public final class CliController {
     }
     public void cancel() {
         RunHandle run = pump.active();
-        if (run == null) renderer.info("当前没有正在执行的任务。");
-        else renderer.cancellation(run.cancel());
+        if (run == null) renderer.info(service.cancelMemoryMaintenance() ? "已请求取消记忆维护。" : "当前没有正在执行的任务。");
+        else { service.cancelMemoryMaintenance(); renderer.cancellation(run.cancel()); }
     }
 }

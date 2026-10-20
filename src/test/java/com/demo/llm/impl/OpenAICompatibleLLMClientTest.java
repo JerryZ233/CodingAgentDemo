@@ -1,7 +1,7 @@
 package com.demo.llm.impl;
 
 import com.demo.agent.AgentLoop;
-import com.demo.agent.Context;
+import com.demo.agent.Conversation;
 import com.demo.config.Config;
 import com.demo.llm.LLMClient;
 import com.demo.llm.RetryPolicy;
@@ -173,10 +173,13 @@ class OpenAICompatibleLLMClientTest {
             public String getDescription() { return "fixture"; }
             public ToolResult execute(String args) { return ToolResult.success(getName(), "fixture content"); }
         };
-        Context context = new Context();
-        context.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
+        Conversation context = new Conversation();
+        var prompt = new com.demo.agent.PromptBuilder();
+        prompt.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
         context.addUserMessage("read fixture");
-        var result = new AgentLoop(client("/v1"), Map.of("read_file", tool)).run(context);
+        var result = new AgentLoop(client("/v1"), Map.of("read_file", tool)).run(context,
+                com.demo.agent.AgentCheckpoint.noop(), com.demo.tools.ToolExecutionContext.unavailable(CancellationToken.none()),
+                com.demo.agent.AgentEventLog.noop(), prompt, new com.demo.memory.context.ContextWindowStrategy());
         assertTrue(result.isCompleted());
         assertEquals("done", result.getMessage());
         takeRequest();
@@ -349,13 +352,15 @@ class OpenAICompatibleLLMClientTest {
                 return ToolResult.success(getName(), "35");
             }
         };
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("write answer");
-        context.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
+        var prompt = new com.demo.agent.PromptBuilder();
+        prompt.setToolDescriptions(OpenAIChatAdapterTest.TOOLS);
         List<com.demo.agent.AgentEvent> events = new ArrayList<>();
         try (var model = configuredClient(origin + "/v1", new RetryPolicy(5,2000,30000), (delay, token) -> { })) {
             var result = new AgentLoop(model, Map.of("write_file", tool)).run(context,
-                    com.demo.agent.AgentCheckpoint.noop(), CancellationToken.none(), events::add);
+                    com.demo.agent.AgentCheckpoint.noop(), com.demo.tools.ToolExecutionContext.unavailable(CancellationToken.none()),
+                    events::add, prompt, new com.demo.memory.context.ContextWindowStrategy());
             assertEquals(recover, result.isCompleted());
             assertEquals(2, result.getIterations());
         }
@@ -496,6 +501,32 @@ class OpenAICompatibleLLMClientTest {
     private static String completion(String message) {
         return "{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"custom-model\","
                 + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":" + message + "}]}";
+    }
+
+    @Test void perRequestObserverReceivesActualRetriesWithoutDoubleCountingGlobalObserver() {
+        replies.add(new Reply(429,"{}",0));
+        String body=completion("{\"role\":\"assistant\",\"content\":\"done\"}");
+        replies.add(new Reply(200,body.substring(0,body.length()-1)+",\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}",0));
+        var global=new ArrayList<com.demo.llm.RequestAttempt>();var local=new com.demo.memory.MemoryTelemetry(Clock.systemUTC());
+        var config=new Config(origin+"/v1","custom-model","test-key",128,0,3,".",java.util.Set.of(),"generic",new RetryPolicy(1,1,1),false);
+        try(var sdk=new OpenAICompatibleLLMClient(config,global::add)){
+            var observed=new com.demo.llm.ObservedLLMClient(sdk,local::record);
+            assertFalse(observed.sendMessage(List.of(Message.user("test")),null,CancellationToken.none(),ignored->{},com.demo.llm.RequestPurpose.CONSOLIDATION).isError());
+        }
+        assertEquals(2,global.size());var usage=local.usage().get(com.demo.llm.RequestPurpose.CONSOLIDATION);
+        assertEquals(2,usage.attempts());assertEquals(1,usage.retries());assertEquals(12L,usage.totalTokens());assertFalse(usage.complete());
+    }
+    @Test void concurrentRequestObserversDoNotSwapForegroundAndBackgroundUsage() throws Exception {
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"one\"}"));
+        replies.add(ok("{\"role\":\"assistant\",\"content\":\"two\"}"));
+        var agent=new CopyOnWriteArrayList<com.demo.llm.RequestAttempt>();var background=new CopyOnWriteArrayList<com.demo.llm.RequestAttempt>();
+        try(var client=configuredClient(origin+"/v1",new RetryPolicy(0,1,1),(d,t)->{})){
+            var first=executor.submit(()->client.sendMessage(List.of(Message.user("code")),null,CancellationToken.none(),ignored->{},com.demo.llm.RequestPurpose.AGENT,agent::add));
+            var second=executor.submit(()->client.sendMessage(List.of(Message.user("summary")),null,CancellationToken.none(),ignored->{},com.demo.llm.RequestPurpose.COMPACTION,background::add));
+            assertFalse(first.get(5,TimeUnit.SECONDS).isError());assertFalse(second.get(5,TimeUnit.SECONDS).isError());
+        }
+        assertEquals(1,agent.size());assertEquals(1,background.size());
+        assertEquals(com.demo.llm.RequestPurpose.AGENT,agent.get(0).purpose());assertEquals(com.demo.llm.RequestPurpose.COMPACTION,background.get(0).purpose());
     }
 
     private static String functionCall(String id, String name) {

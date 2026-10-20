@@ -1,7 +1,7 @@
 package com.demo.session;
 
 import com.demo.agent.CodingAgent;
-import com.demo.agent.Context;
+import com.demo.agent.Conversation;
 import java.nio.file.Path;
 import java.time.Instant;
 
@@ -12,11 +12,11 @@ final class Session {
     final Instant createdAt;
     String title;
     Instant updatedAt;
-    Context context;
+    Conversation context;
     SessionRun lastRun;
     CodingAgent agent;
     boolean unsaved;
-    com.demo.memory.SessionMemoryState memoryState;
+    com.demo.memory.context.SessionMemoryState memoryState;
     volatile SessionSnapshot published;
     SessionSnapshot persisted;
 
@@ -31,8 +31,7 @@ final class Session {
         title = snapshot.title();
         updatedAt = snapshot.updatedAt();
         lastRun = snapshot.lastRun();
-        context = Context.fromMessages(snapshot.messages(), snapshot.contentRevision());
-        context.setWorkspace(workspace);
+        context = Conversation.fromMessages(snapshot.messages(), snapshot.contentRevision());
         unsaved = snapshot.unsaved();
         memoryState = snapshot.memoryState();
         publish();

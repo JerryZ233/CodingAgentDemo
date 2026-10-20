@@ -1,7 +1,7 @@
 package com.demo.memory.storage;
 
-import com.demo.memory.MemoryEdit;
-import com.demo.memory.MemoryItem;
+import com.demo.memory.model.MemoryEdit;
+import com.demo.memory.model.MemoryItem;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

@@ -1,6 +1,8 @@
 package com.demo.agent;
 
 import com.demo.execution.CancellationToken;
+import com.demo.memory.context.ContextPreparation;
+import com.demo.memory.context.ContextWindowStrategy;
 import com.demo.llm.LLMClient;
 import com.demo.tools.ToolDescriptions;
 import com.demo.tools.ToolRegistry;
@@ -16,17 +18,19 @@ public final class CodingAgent {
         if (maxIterations <= 0) throw new IllegalArgumentException("maxIterations must be positive");
         loop = new AgentLoop(Objects.requireNonNull(client, "client"), tools.getTools(), maxIterations, AgentObserver.noop());
     }
-    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint) {
-        context.setToolSpecs(tools.getToolSpecs());
-        return loop.run(context, checkpoint);
+    public AgentRunResult runTurn(Conversation context, AgentCheckpoint checkpoint) {
+        return runTurn(context, checkpoint, CancellationToken.none(), AgentEventLog.noop());
     }
-    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog events) {
-        context.setToolSpecs(tools.getToolSpecs());
-        return loop.run(context, checkpoint, token, events);
+    public AgentRunResult runTurn(Conversation context, AgentCheckpoint checkpoint, CancellationToken token, AgentEventLog events) {
+        return runTurn(context, checkpoint, com.demo.tools.ToolExecutionContext.unavailable(token), events);
     }
-    public AgentRunResult runTurn(Context context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog events) {
-        context.setToolSpecs(tools.getToolSpecs());
-        return loop.run(context, checkpoint, execution, events);
+    public AgentRunResult runTurn(Conversation context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution, AgentEventLog events) {
+        return runTurn(context, checkpoint, execution, events, new PromptBuilder(), new ContextWindowStrategy());
+    }
+    public AgentRunResult runTurn(Conversation context, AgentCheckpoint checkpoint, com.demo.tools.ToolExecutionContext execution,
+                                  AgentEventLog events, PromptBuilder prompt, ContextPreparation preparation) {
+        prompt.setToolSpecs(tools.getToolSpecs());
+        return loop.run(context, checkpoint, execution, events, prompt, preparation);
     }
     public String getToolDescriptions() { return ToolDescriptions.toOpenAIToolsJson(tools.getToolSpecs()); }
 }

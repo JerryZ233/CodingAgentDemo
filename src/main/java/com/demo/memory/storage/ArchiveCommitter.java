@@ -1,8 +1,8 @@
 package com.demo.memory.storage;
 
-import com.demo.memory.CompressionState;
-import com.demo.memory.HistoryEntry;
-import com.demo.memory.SessionMemoryState;
+import com.demo.memory.context.CompressionState;
+import com.demo.memory.model.HistoryEntry;
+import com.demo.memory.context.SessionMemoryState;
 import com.demo.model.Message;
 import com.demo.session.SessionSnapshot;
 import com.demo.session.storage.SessionRepository;

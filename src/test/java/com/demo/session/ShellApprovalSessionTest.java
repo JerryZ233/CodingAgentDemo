@@ -24,7 +24,7 @@ class ShellApprovalSessionTest {
             if(n%3==0)return new LLMClient.LLMResponse("done",null);
             return new LLMClient.LLMResponse(null,List.of(new ToolCall("call"+n,"run_shell","{\"mode\":\"script\",\"script\":\"echo approved\"}")));
         };
-        return new DefaultSessionService(config,model,new JsonSessionRepository(root.resolve("sessions")),Clock.systemUTC());
+        return new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(config),model,new JsonSessionRepository(root.resolve("sessions")),Clock.systemUTC());
     }
     ApprovalCoordinator.PendingApproval pending(RunHandle run)throws Exception {
         long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);

@@ -13,6 +13,7 @@ final class ActiveRun implements RunHandle {
     private final String sessionId;
     private final String id = UUID.randomUUID().toString();
     final CancellationSource cancellation = new CancellationSource();
+    final CancellationSource memoryCancellation = new CancellationSource();
     final CountDownLatch drained = new CountDownLatch(1);
     final RunEventBuffer events;
     private final CompletableFuture<SessionSnapshot> result = new CompletableFuture<>();
@@ -31,6 +32,7 @@ final class ActiveRun implements RunHandle {
     }
     ActiveRun(String sessionId, Clock clock, RunOptions options) {
         this.sessionId = sessionId;
+        cancellation.token().onCancellation(memoryCancellation::cancel);
         events = new RunEventBuffer(sessionId, id, clock);
         approvals = new com.demo.tools.process.ApprovalCoordinator(options.approvalChannelAvailable(), event -> {
             if (event.kind().equals("requested") && !cancellation.token().isCancellationRequested()) state.compareAndSet(State.RUNNING, State.WAITING_APPROVAL);

@@ -2,8 +2,8 @@ package com.demo.session.storage;
 
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
-import com.demo.memory.CompressionState;
-import com.demo.memory.SessionMemoryState;
+import com.demo.memory.context.CompressionState;
+import com.demo.memory.context.SessionMemoryState;
 import com.demo.session.SessionRun;
 import com.demo.session.SessionSnapshot;
 import com.google.gson.Gson;

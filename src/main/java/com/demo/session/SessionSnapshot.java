@@ -1,7 +1,7 @@
 package com.demo.session;
 
 import com.demo.model.Message;
-import com.demo.memory.SessionMemoryState;
+import com.demo.memory.context.SessionMemoryState;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;

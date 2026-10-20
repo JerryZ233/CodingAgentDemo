@@ -33,7 +33,14 @@ final class ChineseMessages {
         };
     }
     static String failure(Throwable failure) {
-        if (failure instanceof com.demo.memory.HistoryAccessException history) return switch (history.reason()) {
+        if (failure instanceof com.demo.memory.storage.MemoryStorageException memory) return switch(memory.getReason()) {
+            case LOCKED -> "记忆存储正在使用中，请稍后重试。";
+            case CONFLICT -> "记忆文件已改变，请重新查看候选或稍后重试整理。";
+            case MALFORMED_DATA, INCONSISTENT_STATE -> "记忆文件或归档不一致，已停止自动修改；请检查备份与恢复说明。";
+            case UNSUPPORTED_VERSION -> "当前程序无法读取此版本的记忆文件。";
+            case IO_FAILURE -> "记忆无法安全保存，请检查目录权限和磁盘空间；原始对话保留。";
+        };
+        if (failure instanceof com.demo.memory.history.HistoryAccessException history) return switch (history.reason()) {
             case DISABLED -> "记忆功能尚未开启；启用 memory.enabled 后可检索项目历史。";
             case NOT_FOUND -> "未找到这条已提交历史，请重新搜索。";
             case PROJECT_CHANGED -> "项目边界已变化，请重新打开会话后检索。";

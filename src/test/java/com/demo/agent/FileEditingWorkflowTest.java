@@ -59,7 +59,7 @@ class FileEditingWorkflowTest {
             }
             return new LLMClient.LLMResponse("", List.of(new ToolCall(tool, arguments.toString())));
         };
-        Context context = new Context(); context.addUserMessage("修复 timeout 乘法溢出");
+        Conversation context = new Conversation(); context.addUserMessage("修复 timeout 乘法溢出");
         var agent = new CodingAgent(model, ToolRegistry.fromConfig(Config.defaults(), root), 8);
         assertTrue(agent.runTurn(context, AgentCheckpoint.noop()).isCompleted());
         assertEquals(5, step.get());

@@ -1,3 +1,5 @@
+memory:
+  enabled: false
 llm:
   provider: deepseek
   api_url: https://api.deepseek.com/chat/completions

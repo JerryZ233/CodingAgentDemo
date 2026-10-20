@@ -38,7 +38,7 @@ class AgentLoopTest {
         };
         LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
                 List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
-        Context context = Context.fromMessages(List.of(Message.user("write")));
+        Conversation context = Conversation.fromMessages(List.of(Message.user("write")));
         var result = new AgentLoop(model, Map.of("echo", writer)).run(context, AgentCheckpoint.noop(), source.token(), AgentEventLog.noop());
         assertEquals(AgentRunResult.Status.CANCELLED, result.getStatus());
         assertEquals("completed", java.nio.file.Files.readString(workspace.resolve("a.txt")));
@@ -58,7 +58,7 @@ class AgentLoopTest {
         };
         LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
                 List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
-        Context context = Context.fromMessages(List.of(Message.user("work")));
+        Conversation context = Conversation.fromMessages(List.of(Message.user("work")));
         IllegalStateException failure = new IllegalStateException("checkpoint unavailable");
         assertEquals(failure, assertThrows(IllegalStateException.class,
                 () -> new AgentLoop(model, Map.of("echo", tool)).run(context, (state, iteration) -> {
@@ -80,7 +80,7 @@ class AgentLoopTest {
         };
         LLMClient model = (messages, tools) -> new LLMClient.LLMResponse(null,
                 List.of(new ToolCall("a", "echo", "{}"), new ToolCall("b", "echo", "{}")));
-        Context context = Context.fromMessages(List.of(Message.user("work")));
+        Conversation context = Conversation.fromMessages(List.of(Message.user("work")));
         assertThrows(IllegalStateException.class,
                 () -> new AgentLoop(model, Map.of("echo", tool)).run(context, (state, iteration) -> {
                     if (state.getMessages().size() == 3) throw new IllegalStateException("cannot save result");
@@ -98,7 +98,7 @@ class AgentLoopTest {
         LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
                 ? new LLMClient.LLMResponse("", List.of(toolCall))
                 : new LLMClient.LLMResponse("done", null);
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("use a tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of("echo", new EchoTool())).run(context);
@@ -124,7 +124,7 @@ class AgentLoopTest {
     void stopsAtConfiguredMaxIterations() {
         ToolCall toolCall = new ToolCall("call_1", "echo", "{\"text\":\"hello\"}");
         LLMClient llm = (messages, toolsDescription) -> new LLMClient.LLMResponse("", List.of(toolCall));
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("keep using a tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of("echo", new EchoTool()), 1).run(context);
@@ -139,7 +139,7 @@ class AgentLoopTest {
     @DisplayName("LLM errors are recorded as errors and stop the loop")
     void stopsOnLlmError() {
         LLMClient llm = (messages, toolsDescription) -> LLMClient.LLMResponse.error("transport failed");
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("do work");
 
         AgentRunResult result = new AgentLoop(llm, Map.of()).run(context);
@@ -159,7 +159,7 @@ class AgentLoopTest {
         LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
                 ? new LLMClient.LLMResponse("", List.of(toolCall))
                 : new LLMClient.LLMResponse("recovered from missing tool", null);
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("use a missing tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of()).run(context);
@@ -183,7 +183,7 @@ class AgentLoopTest {
         LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
                 ? new LLMClient.LLMResponse("", List.of(toolCall))
                 : new LLMClient.LLMResponse("handled failure", null);
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("use a failing tool");
 
         AgentRunResult result = new AgentLoop(llm, Map.of("fail", new FailingTool())).run(context);
@@ -208,7 +208,7 @@ class AgentLoopTest {
         LLMClient llm = (messages, toolsDescription) -> calls.getAndIncrement() == 0
                 ? new LLMClient.LLMResponse("", List.of(failingCall, echoCall))
                 : new LLMClient.LLMResponse("saw both results", null);
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("use two tools");
 
         AgentRunResult result = new AgentLoop(
@@ -234,7 +234,7 @@ class AgentLoopTest {
                 ? new LLMClient.LLMResponse("", List.of(toolCall))
                 : new LLMClient.LLMResponse("done", null);
         InMemoryAgentEventLog eventLog = new InMemoryAgentEventLog();
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("trace this");
 
         AgentRunResult result = new AgentLoop(
@@ -272,7 +272,7 @@ class AgentLoopTest {
                 ? new LLMClient.LLMResponse("", List.of(toolCall))
                 : new LLMClient.LLMResponse("done", null);
         RecordingObserver observer = new RecordingObserver();
-        Context context = new Context();
+        Conversation context = new Conversation();
         context.addUserMessage("observe this");
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();

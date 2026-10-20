@@ -34,6 +34,9 @@ class CodingAgent(BaseInstalledAgent):
             "LLM_API_KEY", "LLM_API_URL", "LLM_MODEL", "LLM_PROVIDER", "LLM_MAX_TOKENS",
             "LLM_TEMPERATURE", "LLM_MAX_RETRIES", "AGENT_MAX_ITERATIONS", "CODING_AGENT_EVAL_MODEL_CALLS"
         ) if key in os.environ}
+        # Coding benchmark scope is one fresh turn, independent of host/user memory defaults.
+        env.update({"MEMORY_ENABLED": "false", "MEMORY_MAINTENANCE_ENABLED": "false",
+                    "MEMORY_CONSOLIDATION_ENABLED": "false"})
         command = (
             "java -Dfile.encoding=UTF-8 -cp '/opt/agent/lib/*' com.demo.eval.EvalMain "
             "--workspace /workspace --instruction-file /tmp/eval-instruction.txt "

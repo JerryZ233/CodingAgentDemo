@@ -42,8 +42,7 @@ class AgentTranscriptReplayTest {
             return new LLMClient.LLMResponse("I read the fixture.", null);
         };
 
-        Context context = new Context();
-        context.setToolDescriptions("[]");
+        Conversation context = new Conversation();
         context.addUserMessage("read the fixture");
 
         AgentRunResult result = new AgentLoop(
@@ -65,7 +64,7 @@ class AgentTranscriptReplayTest {
         repository.save(new com.demo.session.SessionSnapshot(id, "fixture", tempDir.toAbsolutePath(),
                 now, now, context.getMessages(),
                 com.demo.session.SessionRun.started(now).finish(result, now), false));
-        Context reloaded = Context.fromMessages(repository.load(id).messages());
+        Conversation reloaded = Conversation.fromMessages(repository.load(id).messages());
 
         List<Message> replayed = reloaded.getMessages();
         assertEquals(4, replayed.size());

@@ -136,7 +136,7 @@ class SessionLifecycleIntegrationTest {
     }
 
     private DefaultSessionService service(LLMClient model, JsonSessionRepository repository) {
-        return new DefaultSessionService(Config.defaults(), model, repository, Clock.systemUTC());
+        return new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, Clock.systemUTC());
     }
 
     private LLMClient.LLMResponse call(String tool, String arguments) {

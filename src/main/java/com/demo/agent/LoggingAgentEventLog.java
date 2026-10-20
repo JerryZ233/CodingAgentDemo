@@ -13,7 +13,7 @@ public final class LoggingAgentEventLog implements AgentEventLog {
                 .put("tool_call_id", event.getToolCallId() == null ? "" : LogData.quote(event.getToolCallId()))) {
             switch (event.getType()) {
                 case ITERATION_STARTED -> log.debug("Iteration started");
-                case CONTEXT_PREPARED -> log.debug("Context budget report={}", event.getContextBudget());
+                case CONTEXT_PREPARED -> log.debug("Conversation budget report={}", event.getContextBudget());
                 case LLM_REQUEST_STARTED -> log.debug("Model request started");
                 case LLM_RESPONSE -> {
                     if (log.isDebugEnabled()) log.debug("Model response received final={} text={}",

@@ -1,0 +1,122 @@
+package com.demo.memory.context;
+
+import com.demo.model.Message;
+import com.demo.model.ToolCall;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Selects recent conversation history while keeping tool-call/result blocks intact.
+ */
+public final class ContextWindowStrategy implements ContextPreparation {
+    @Override
+    public Input prepare(Request request, com.demo.execution.CancellationToken token) {
+        token.throwIfCancellationRequested();
+        List<Message> messages = new ArrayList<>();
+        if (request.systemPrompt() != null && !request.systemPrompt().isEmpty()) messages.add(Message.system(request.systemPrompt()));
+        messages.addAll(selectHistory(request.messages()));
+        token.throwIfCancellationRequested();
+        return new Input(messages, request.toolsDescription(), java.util.Optional.empty());
+    }
+
+
+    public static final int DEFAULT_MAX_HISTORY_CHARS = 64_000;
+    public static final int DEFAULT_MAX_HISTORY_MESSAGES = 100;
+    public static final int DEFAULT_MAX_MESSAGE_CHARS = com.demo.tools.support.ToolLimits.MESSAGE_CHARS;
+    private static final String TRUNCATION_SUFFIX = "\n[message truncated]";
+
+    private final int maxHistoryChars;
+    private final int maxHistoryMessages;
+    private final int maxMessageChars;
+
+    public ContextWindowStrategy() {
+        this(DEFAULT_MAX_HISTORY_CHARS, DEFAULT_MAX_HISTORY_MESSAGES);
+    }
+
+    public ContextWindowStrategy(int maxHistoryChars, int maxHistoryMessages) {
+        this(maxHistoryChars, maxHistoryMessages, DEFAULT_MAX_MESSAGE_CHARS);
+    }
+
+    public ContextWindowStrategy(int maxHistoryChars, int maxHistoryMessages, int maxMessageChars) {
+        if (maxHistoryChars <= 0) {
+            throw new IllegalArgumentException("maxHistoryChars must be positive");
+        }
+        if (maxHistoryMessages <= 0) {
+            throw new IllegalArgumentException("maxHistoryMessages must be positive");
+        }
+        if (maxMessageChars <= TRUNCATION_SUFFIX.length()) {
+            throw new IllegalArgumentException("maxMessageChars must leave room for truncation suffix");
+        }
+        this.maxHistoryChars = maxHistoryChars;
+        this.maxHistoryMessages = maxHistoryMessages;
+        this.maxMessageChars = maxMessageChars;
+    }
+
+    public List<Message> selectHistory(List<Message> messages) {
+        var blocks = new com.demo.memory.context.ConversationBlockBuilder().build(messages);
+        List<Message> selected = new ArrayList<>();
+        int selectedChars = 0;
+        int selectedMessages = 0;
+
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            List<Message> block = trimOversizedMessages(blocks.get(i).messages());
+            int blockChars = estimateMessagesChars(block);
+            int blockMessages = block.size();
+            boolean fits = selectedMessages + blockMessages <= maxHistoryMessages
+                    && selectedChars + blockChars <= maxHistoryChars;
+
+            if (fits || selected.isEmpty()) {
+                selected.addAll(0, block);
+                selectedChars += blockChars;
+                selectedMessages += blockMessages;
+            } else {
+                break;
+            }
+        }
+
+        return selected;
+    }
+
+    private List<Message> trimOversizedMessages(List<Message> block) {
+        List<Message> trimmed = new ArrayList<>();
+        for (Message message : block) {
+            trimmed.add(trimOversizedMessage(message));
+        }
+        return trimmed;
+    }
+
+    private Message trimOversizedMessage(Message message) {
+        String content = message.getContent();
+        if (content == null || content.length() <= maxMessageChars) {
+            return message;
+        }
+
+        int prefixLength = maxMessageChars - TRUNCATION_SUFFIX.length();
+        return message.withContent(content.substring(0, prefixLength) + TRUNCATION_SUFFIX);
+    }
+
+    private int estimateMessagesChars(List<Message> messages) {
+        int total = 0;
+        for (Message message : messages) {
+            total += estimateMessageChars(message);
+        }
+        return total;
+    }
+
+    private int estimateMessageChars(Message message) {
+        int total = length(message.getRole()) + length(message.getContent())
+                + length(message.getToolCallId()) + length(message.getToolName());
+
+        if (message.getToolCalls() != null) {
+            for (ToolCall toolCall : message.getToolCalls()) {
+                total += length(toolCall.getId()) + length(toolCall.getToolName()) + length(toolCall.getArguments());
+            }
+        }
+
+        return total;
+    }
+
+    private int length(String value) {
+        return value == null ? 0 : value.length();
+    }
+}

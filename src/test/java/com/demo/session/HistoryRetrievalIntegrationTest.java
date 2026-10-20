@@ -1,9 +1,12 @@
 package com.demo.session;
 
+import com.demo.memory.MemoryHarness;
+import com.demo.memory.history.HistoryAccessException;
+import com.demo.memory.history.HistorySearchService;
+import com.demo.memory.model.HistoryEntry;
 import com.demo.config.*;
 import com.demo.execution.CancellationToken;
 import com.demo.llm.LLMClient;
-import com.demo.memory.*;
 import com.demo.memory.storage.*;
 import com.demo.model.*;
 import com.demo.session.storage.JsonSessionRepository;
@@ -110,7 +113,7 @@ class HistoryRetrievalIntegrationTest {
 
     @Test void disabledMemoryAddsNoToolsAndRejectsManualHistoryAccess() {
         archive(temp, "会话恢复");
-        try (var service = service(Config.defaults(), (input, tools) -> {
+        try (var service = service(com.demo.testing.TestConfigs.defaults(), (input, tools) -> {
             assertFalse(tools.contains("memory_search"));
             assertFalse(tools.contains("memory_read"));
             return new LLMClient.LLMResponse("done", null);

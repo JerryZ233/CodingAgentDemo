@@ -42,7 +42,7 @@ class ShellApprovalCliTest {
             return n<=2?new LLMClient.LLMResponse(null,List.of(new ToolCall("call"+n,"run_shell","{\"mode\":\"script\",\"script\":\"echo CLI_OK\"}")))
                     :new LLMClient.LLMResponse("done",null);
         };
-        var app=new CliApplication(()->config,(c,o)->new DefaultSessionService(c,model,new JsonSessionRepository(root.resolve("sessions")),Clock.systemUTC()),()->terminal,false);
+        var app=new CliApplication(()->config,(c,o)->new DefaultSessionService(com.demo.testing.TestConfigs.withoutMemory(c),model,new JsonSessionRepository(root.resolve("sessions")),Clock.systemUTC()),()->terminal,false);
         return app.run(single?new String[]{"--workspace",root.toString(),"run"}:new String[]{"--workspace",root.toString()});
     }
     @Test void singleTaskTerminalServicesApprovalAndReusesGrant() {

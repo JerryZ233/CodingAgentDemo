@@ -1,6 +1,6 @@
 package com.demo.session;
 
-import com.demo.memory.HistoryEntry;
+import com.demo.memory.model.HistoryEntry;
 import com.demo.memory.storage.*;
 import com.demo.model.Message;
 import com.demo.session.storage.*;

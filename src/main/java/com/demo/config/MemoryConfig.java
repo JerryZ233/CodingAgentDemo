@@ -2,7 +2,7 @@ package com.demo.config;
 
 import java.util.Objects;
 
-/** Immutable memory settings. Disabled until the complete harness is integrated. */
+/** Immutable memory settings. Explicit memory.enabled=false preserves the legacy context window. */
 public record MemoryConfig(boolean enabled, int contextWindowTokens, int safetyMarginTokens,
                            double compactTriggerRatio, double compactTargetRatio,
                            int globalBudgetTokens, int projectBudgetTokens,
@@ -28,7 +28,7 @@ public record MemoryConfig(boolean enabled, int contextWindowTokens, int safetyM
     }
 
     public static MemoryConfig defaults() {
-        return new MemoryConfig(false, 32_768, 2_048, 0.80, 0.60,
+        return new MemoryConfig(true, 32_768, 2_048, 0.80, 0.60,
                 1_024, 3_072, 1_200, 2, Consolidation.defaults(), Maintenance.defaults());
     }
 

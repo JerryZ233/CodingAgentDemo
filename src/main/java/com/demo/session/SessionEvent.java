@@ -12,7 +12,7 @@ public record SessionEvent(String sessionId, String runId, long sequence, Instan
     }
     public sealed interface Payload permits Approval, CommandOutput, Progress, ContextPrepared, MemoryCompaction, ModelFailure, AssistantMessage, ToolStarted, ToolFinished, RunFinished { }
     public record MemoryCompaction(com.demo.memory.MemoryHarness.CompactionPhase phase) implements Payload { }
-    public record ContextPrepared(com.demo.memory.ContextBudget.Report budget) implements Payload { }
+    public record ContextPrepared(com.demo.memory.context.ContextBudget.Report budget) implements Payload { }
     public record Approval(String kind) implements Payload { }
     public record CommandOutput(String text) implements Payload { }
     public record ModelFailure(int iteration, com.demo.llm.LLMFailure failure) implements Payload { }

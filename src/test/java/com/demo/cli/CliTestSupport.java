@@ -21,7 +21,7 @@ final class CliTestSupport {
         final CliController controller;
         Harness(Path workspace, LLMClient model) { this(workspace, model, new JsonSessionRepository(workspace.resolve("sessions"))); }
         Harness(Path workspace, LLMClient model, SessionRepository repository) {
-            service = new DefaultSessionService(Config.defaults(), model, repository, Clock.systemUTC());
+            service = new DefaultSessionService(com.demo.testing.TestConfigs.defaults(), model, repository, Clock.systemUTC());
             pump = new RunEventPump(service, renderer);
             shutdown = new CliShutdownCoordinator(service, pump, terminal, renderer);
             controller = new CliController(service, workspace, renderer, pump, shutdown);
