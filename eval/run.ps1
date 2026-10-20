@@ -88,7 +88,13 @@ try {
         if ([Environment]::GetEnvironmentVariable($key)) { $arguments += @('--env', $key) }
     }
     $arguments += @('coding-agent-eval-orchestrator:local', '--output-dir', $daemonPath, '--mode', $Mode)
-    if ($Mode -eq 'agent' -and $AllowModelCalls) { $arguments += '--allow-model-calls' }
+    if ($Mode -eq 'agent' -and $AllowModelCalls) {
+        # Existing release images may predate the Python consent flag. Keep those images unchanged;
+        # the PowerShell entry point has already required explicit consent for this invocation.
+        $runnerHelp = & docker run --rm --network none coding-agent-eval-orchestrator:local --help 2>&1
+        if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the existing orchestrator release options.' }
+        if (($runnerHelp | Out-String).Contains('--allow-model-calls')) { $arguments += '--allow-model-calls' }
+    }
     foreach ($name in $taskNames) { $arguments += @('--task', $name) }
     & docker @arguments
     $exitCode = $LASTEXITCODE

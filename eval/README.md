@@ -2,7 +2,9 @@
 
 Harbor 0.24.0 调度本项目 Java Agent 修改样例工程，再启动独立容器，用可信的 JUnit 测试验收源码。支持三个任务：词频统计、CSV 解析修复、待办事项状态筛选。
 
-**仅在用户明确要求时运行测试。真实模型评测默认禁止，必须对本次运行显式传入 `-AllowModelCalls`；每次重跑也需要用户明确指示。不要将其接入定时任务、自动 CI、Git hooks 或日常构建。** 启动脚本、Python 编排器、Harbor 适配器和 Java 入口均检查本次调用的授权；配置了 API Key 不代表允许运行评测。
+**普通测试可正常运行，无需用户逐次指示，包括不调用真实模型的 Docker 测试和 Harbor 离线验证（`oracle`、`initial`）。只有调用真实模型 API 的测试需要用户显式指示；每次重新发起评测也需要明确指示。** 真实模型评测不得自动接入定时任务、自动 CI、Git hooks 或日常构建。获得指示后，执行者为本次运行传入 `-AllowModelCalls`，无需再次询问确认；配置了 API Key 本身不代表获得授权。启动脚本、Python 编排器、Harbor 适配器和 Java 入口均检查本次调用的授权。
+
+本项目中，用户说“跑一次harbor测试”即明确授权一次 `agent` 模式的真实模型评测；只有明确要求离线、`oracle` 或 `initial` 时才使用对应离线模式。复用尚不支持 Python 授权开关的旧 release 镜像时，PowerShell 仍要求本次显式传入 `-AllowModelCalls`，并兼容旧版参数；无需重新编译或构建镜像。
 
 ## 运行
 
@@ -48,6 +50,12 @@ $env:LLM_API_KEY = '你的密钥'
 隐藏测试和参考解答不进入 Agent 的任务镜像。验收器只执行可信测试与编译命令，不使用候选工程的构建脚本、测试文件或已编译产物。首版用于受控样例任务，不作为对抗恶意候选代码的强隔离判题系统。
 
 ## 结果与统计口径
+
+报告中的 `cache_hit_rate` 为缓存命中输入 Token / 总输入 Token，取值 0–1；总体按 Token 加权，不平均任务百分比。只有输入及缓存统计完整且输入大于零时才计算，否则为 `null`（未知）。输出 Token 不参与分母。
+
+已有结果可用 `python eval/report.py eval/results/<结果目录>` 离线重新生成 JSON/CSV，无需构建镜像或调用模型。后续正常构建的编排镜像自动包含新增统计；复用旧镜像时可在运行后使用此命令补算。
+
+每个任务包含 `tool_call_count`、`tool_success_count`、`tool_failure_count`、`tool_unfinished_count`，以及按工具名称分组的 `tool_calls_by_name`。失败率 `tool_failure_rate` = 失败 / 已返回结果的调用数；未返回结果单独计数。成功与失败以工具结果的 `success` 字段为准，不代表任务验收结果。`tool_stats_complete` 要求事件日志可解析、运行结束且调用均有结果；缺失日志的统计为 `null`。CSV 中按名称统计列使用 JSON。新增统计由汇总器读取已有 metrics 和事件日志，无需额外模型请求。
 
 ```text
 eval/results/<时间-随机标识>/

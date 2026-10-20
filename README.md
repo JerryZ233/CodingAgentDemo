@@ -508,6 +508,8 @@ try (SessionService sessions = new DefaultSessionService(Config.getInstance())) 
 
 新增基于 Harbor 与 Docker 的本地评测流程：运行 Agent 修改 Java 样例工程，由独立验收容器分别运行功能和回归测试，并保存 Token 消耗、耗时与 JSON/CSV 报告。配置与运行方式见 [eval/README.md](eval/README.md)。
 
+普通测试及不调用真实模型的离线验证可正常运行。真实模型测试需要用户显式指示；“跑一次harbor测试”默认使用真实模型，无需再次确认，不自动重跑。
+
 ```powershell
 # 不调用模型，先用参考解答验证容器与验收链路
 .\eval\run.ps1 -Mode oracle
