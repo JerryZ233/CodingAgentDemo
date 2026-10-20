@@ -16,6 +16,7 @@ final class ChineseMessages {
             case LLM_ERROR -> "模型请求失败";
             case MAX_ITERATIONS -> "达到处理上限";
             case TOOL_ERROR -> "操作失败";
+            case CONTEXT_BLOCKED -> "上下文准备受阻";
             case FAILED -> "处理失败";
             case INTERRUPTED -> "上次运行已中断";
             case STORAGE_ERROR -> "保存失败";
@@ -37,6 +38,7 @@ final class ChineseMessages {
             case MALFORMED_DATA -> "会话文件已损坏，无法读取。详细原因已记录到日志。";
             case UNSUPPORTED_VERSION -> "当前程序无法读取此版本的会话文件。";
             case IO_FAILURE -> "存储失败，请检查存储目录权限和磁盘空间，再使用 /retry-save。已完成的文件修改会保留。";
+            case CONFLICT -> "会话正在被其他操作修改，请稍后重新加载并重试。";
         };
         if (failure instanceof SessionException session) return switch (session.getReason()) {
             case NOT_FOUND -> "未找到该会话，请使用 /sessions 查看可选会话。";
@@ -58,6 +60,7 @@ final class ChineseMessages {
             case CANCELLED -> "任务已取消，已完成的文件修改会保留。";
             case LLM_ERROR -> "模型请求失败，本轮已停止。详细原因已记录到日志。";
             case MAX_ITERATIONS -> "已达到本轮处理上限，任务可能尚未完成。";
+            case CONTEXT_BLOCKED -> "上下文准备受阻，本轮已暂停；请检查上下文预算、记忆文件及归档完整性后重试。原始消息已保留。";
             case STORAGE_ERROR -> "保存失败，请修复存储并使用 /retry-save。已完成的文件修改会保留。";
             case INTERRUPTED -> "上次运行已中断，已保留已有记录。";
             case CANCELLING -> "正在取消任务…";

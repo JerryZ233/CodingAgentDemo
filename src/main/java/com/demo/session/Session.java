@@ -16,6 +16,7 @@ final class Session {
     SessionRun lastRun;
     CodingAgent agent;
     boolean unsaved;
+    com.demo.memory.SessionMemoryState memoryState;
     volatile SessionSnapshot published;
 
     Session(SessionSnapshot snapshot) {
@@ -29,15 +30,16 @@ final class Session {
         title = snapshot.title();
         updatedAt = snapshot.updatedAt();
         lastRun = snapshot.lastRun();
-        context = Context.fromMessages(snapshot.messages());
+        context = Context.fromMessages(snapshot.messages(), snapshot.contentRevision());
         context.setWorkspace(workspace);
         unsaved = snapshot.unsaved();
+        memoryState = snapshot.memoryState();
         publish();
     }
 
     SessionSnapshot publish() {
         published = new SessionSnapshot(id, title, workspace, createdAt, updatedAt,
-                context.getMessages(), lastRun, unsaved);
+                context.getMessages(), lastRun, unsaved, context.getContentRevision(), memoryState);
         return published;
     }
 }

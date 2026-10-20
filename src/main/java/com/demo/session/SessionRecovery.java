@@ -38,7 +38,8 @@ public final class SessionRecovery {
         if (run == null) run = SessionRun.started(source.createdAt());
         run = run.finish(SessionRun.Status.INTERRUPTED, updated, INTERRUPTED_MESSAGE);
         return new RecoveryResult(new SessionSnapshot(source.id(), source.title(), source.workspace(),
-                source.createdAt(), updated, history, run, true), true, INTERRUPTED_MESSAGE);
+                source.createdAt(), updated, history, run, true,
+                Math.addExact(source.contentRevision(), repaired), source.memoryState()), true, INTERRUPTED_MESSAGE);
     }
 
     private int appendUnknownResults(List<Message> history, Map<String, ToolCall> pending) {

@@ -24,6 +24,9 @@ public class Context {
     private final List<Message> messages;
     private final PromptBuilder promptBuilder;
     private ContextWindowStrategy contextWindowStrategy;
+    private long contentRevision;
+    private ContextPreparation preparation;
+    private com.demo.memory.ContextBudget.Report lastBudgetReport;
     
     public Context() {
         this.messages = new ArrayList<>();
@@ -33,9 +36,23 @@ public class Context {
 
     /** Restore caller-owned history; persistence belongs to SessionService. */
     public static Context fromMessages(List<Message> history) {
+        return fromMessages(history, history.size());
+    }
+
+    public static Context fromMessages(List<Message> history, long contentRevision) {
+        if (contentRevision < history.size()) throw new IllegalArgumentException("Invalid content revision");
         Context context = new Context();
         context.messages.addAll(history.stream().map(Message::copyOf).toList());
+        context.contentRevision = contentRevision;
         return context;
+    }
+
+    public long getContentRevision() { return contentRevision; }
+
+    private void append(Message message) {
+        long next = Math.incrementExact(contentRevision);
+        messages.add(message);
+        contentRevision = next;
     }
 
     public void setWorkspace(java.nio.file.Path workspace) {
@@ -119,8 +136,8 @@ public class Context {
     }
 
     /**
-     * Sets the approximate history budget used when building LLM messages.
-     * The system prompt is always preserved and does not count against this budget.
+     * Sets the legacy approximate history budget. An installed preparation uses its own full-request budget.
+     * In the legacy path, the system prompt is preserved and does not count against this budget.
      *
      * @param maxHistoryChars Approximate character budget for conversation history
      * @param maxHistoryMessages Maximum number of conversation messages to include
@@ -139,6 +156,36 @@ public class Context {
      * @return The complete message list for LLM
      */
     public List<Message> buildMessagesForLLM() {
+        return prepareForLLM(com.demo.execution.CancellationToken.none()).messages();
+    }
+
+    /** Host supplies preparation; Context itself never reads files or calls a model. */
+    public void setPreparation(ContextPreparation preparation) {
+        this.preparation = java.util.Objects.requireNonNull(preparation);
+        lastBudgetReport = null;
+    }
+
+    public java.util.Optional<com.demo.memory.ContextBudget.Report> getLastBudgetReport() {
+        return java.util.Optional.ofNullable(lastBudgetReport);
+    }
+
+    public ContextPreparation.Input prepareForLLM(com.demo.execution.CancellationToken token) {
+        token.throwIfCancellationRequested();
+        lastBudgetReport = null;
+        try {
+            ContextPreparation.Input input = preparation == null
+                    ? new ContextPreparation.Input(buildLegacyMessages(), getToolDescriptions(), java.util.Optional.empty())
+                    : preparation.prepare(this, token);
+            token.throwIfCancellationRequested();
+            lastBudgetReport = input.budget().orElse(null);
+            return input;
+        } catch (com.demo.memory.ContextBlockedException blocked) {
+            lastBudgetReport = blocked.report().orElse(null);
+            throw blocked;
+        }
+    }
+
+    private List<Message> buildLegacyMessages() {
         List<Message> llmMessages = new ArrayList<>();
         
         // Build system prompt with tool descriptions injected
@@ -159,7 +206,7 @@ public class Context {
      * @param content The content of the user message
      */
     public void addUserMessage(String content) {
-        messages.add(Message.user(content));
+        append(Message.user(content));
     }
     
     /**
@@ -168,20 +215,20 @@ public class Context {
      * @param content The content of the assistant message
      */
     public void addAssistantMessage(String content) {
-        messages.add(Message.assistant(content));
+        append(Message.assistant(content));
     }
 
     public void addAssistantToolCalls(String content, List<ToolCall> toolCalls) {
-        messages.add(Message.assistantToolCalls(content, toolCalls));
+        append(Message.assistantToolCalls(content, toolCalls));
     }
 
     public void addToolResult(ToolCall toolCall, String content) {
-        messages.add(Message.tool(toolCall.getId(), toolCall.getToolName(), content));
+        append(Message.tool(toolCall.getId(), toolCall.getToolName(), content));
     }
 
     public void addToolResult(ToolCall toolCall, ToolResult result) {
         String error = result.isSuccess() ? null : result.getOutput();
-        messages.add(Message.tool(
+        append(Message.tool(
                 toolCall.getId(),
                 toolCall.getToolName(),
                 result.getOutput(),
@@ -202,7 +249,10 @@ public class Context {
      * Clears all messages from the conversation history.
      */
     public void clear() {
+        if (messages.isEmpty()) return;
+        long next = Math.incrementExact(contentRevision);
         messages.clear();
+        contentRevision = next;
     }
     
 }

@@ -3,9 +3,7 @@ package com.demo.agent;
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Selects recent conversation history while keeping tool-call/result blocks intact.
@@ -45,13 +43,13 @@ public class ContextWindowStrategy {
     }
 
     public List<Message> selectHistory(List<Message> messages) {
-        List<List<Message>> blocks = buildAtomicHistoryBlocks(messages);
+        var blocks = new com.demo.memory.ConversationBlockBuilder().build(messages);
         List<Message> selected = new ArrayList<>();
         int selectedChars = 0;
         int selectedMessages = 0;
 
         for (int i = blocks.size() - 1; i >= 0; i--) {
-            List<Message> block = trimOversizedMessages(blocks.get(i));
+            List<Message> block = trimOversizedMessages(blocks.get(i).messages());
             int blockChars = estimateMessagesChars(block);
             int blockMessages = block.size();
             boolean fits = selectedMessages + blockMessages <= maxHistoryMessages
@@ -85,40 +83,6 @@ public class ContextWindowStrategy {
 
         int prefixLength = maxMessageChars - TRUNCATION_SUFFIX.length();
         return message.withContent(content.substring(0, prefixLength) + TRUNCATION_SUFFIX);
-    }
-
-    private List<List<Message>> buildAtomicHistoryBlocks(List<Message> messages) {
-        List<List<Message>> blocks = new ArrayList<>();
-
-        for (int i = 0; i < messages.size(); i++) {
-            Message message = messages.get(i);
-            List<Message> block = new ArrayList<>();
-            block.add(message);
-
-            if (hasToolCalls(message)) {
-                Set<String> expectedToolCallIds = new HashSet<>();
-                for (ToolCall toolCall : message.getToolCalls()) {
-                    expectedToolCallIds.add(toolCall.getId());
-                }
-
-                while (i + 1 < messages.size()) {
-                    Message next = messages.get(i + 1);
-                    if (!"tool".equals(next.getRole()) || !expectedToolCallIds.contains(next.getToolCallId())) {
-                        break;
-                    }
-                    block.add(next);
-                    i++;
-                }
-            }
-
-            blocks.add(block);
-        }
-
-        return blocks;
-    }
-
-    private boolean hasToolCalls(Message message) {
-        return message.getToolCalls() != null && !message.getToolCalls().isEmpty();
     }
 
     private int estimateMessagesChars(List<Message> messages) {

@@ -14,9 +14,59 @@ import static org.junit.jupiter.api.Assertions.*;
 class JsonSessionRepositoryTest {
     @TempDir Path temp;
 
+    @Test
+    void readingAndListingLegacyDocumentsDoNotMigrateFilesUntilSave() throws IOException {
+        var repository = new JsonSessionRepository(temp);
+        var original = empty(UUID.randomUUID().toString(), "legacy");
+        var root = com.google.gson.JsonParser.parseString(new SessionDocumentCodec().encode(original)).getAsJsonObject();
+        root.addProperty("schemaVersion", 1);
+        root.remove("contentRevision");
+        root.remove("memoryState");
+        Path path = temp.resolve(original.id() + ".json");
+        Files.writeString(path, root.toString());
+        byte[] before = Files.readAllBytes(path);
+        var loaded = repository.load(original.id());
+        assertEquals(1, repository.list().sessions().size());
+        assertArrayEquals(before, Files.readAllBytes(path));
+        repository.save(loaded);
+        assertEquals(2, com.google.gson.JsonParser.parseString(Files.readString(path))
+                .getAsJsonObject().get("schemaVersion").getAsInt());
+    }
+
     private SessionSnapshot empty(String id, String title) {
         Instant now = Instant.parse("2026-10-15T10:00:00Z");
         return new SessionSnapshot(id, title, temp.toAbsolutePath(), now, now, List.of(), null, true);
+    }
+
+    @Test
+    void conditionalSaveChecksFullPersistedStateAndNeverOverwritesAStaleSnapshot() {
+        var first = new JsonSessionRepository(temp);
+        var second = new JsonSessionRepository(temp);
+        var original = empty(UUID.randomUUID().toString(), "original");
+        first.save(original);
+        var expected = first.load(original.id());
+        var newer = empty(original.id(), "newer title, same content revision");
+        second.save(newer);
+        assertEquals(SessionStorageException.Reason.CONFLICT,
+                assertThrows(SessionStorageException.class, () -> first.compareAndSave(expected, original)).getReason());
+        assertEquals(newer.title(), first.load(original.id()).title());
+        first.compareAndSave(second.load(original.id()), original);
+        assertEquals(original.title(), second.load(original.id()).title());
+    }
+
+    @Test
+    void ordinaryAndConditionalWritesBothRespectTheSessionFileLock() throws Exception {
+        var repository = new JsonSessionRepository(temp);
+        var original = empty(UUID.randomUUID().toString(), "original");
+        repository.save(original);
+        try (var lock = new com.demo.storage.StorageFiles(temp).lock(".locks/" + original.id() + ".lck")) {
+            assertEquals(SessionStorageException.Reason.CONFLICT,
+                    assertThrows(SessionStorageException.class, () -> repository.save(original)).getReason());
+            assertEquals(SessionStorageException.Reason.CONFLICT,
+                    assertThrows(SessionStorageException.class, () -> repository.compareAndSave(original, original)).getReason());
+            assertEquals(original.title(), repository.load(original.id()).title());
+        }
+        repository.save(original);
     }
 
     @Test
@@ -30,7 +80,7 @@ class JsonSessionRepositoryTest {
         assertEquals("会话😀", repository.load(original.id()).title());
         repository.save(empty(original.id(), "changed"));
         assertEquals("changed", repository.load(original.id()).title());
-        try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
+        try (var files = Files.list(directory)) { assertEquals(1, files.filter(path -> !path.getFileName().toString().equals(".locks")).count()); }
         assertFalse(repository.load(original.id()).unsaved());
     }
 
@@ -48,7 +98,7 @@ class JsonSessionRepositoryTest {
         assertEquals(SessionStorageException.Reason.IO_FAILURE, assertThrows(SessionStorageException.class,
                 () -> failing.save(empty(original.id(), "changed"))).getReason());
         assertArrayEquals(before, Files.readAllBytes(temp.resolve(original.id() + ".json")));
-        try (var files = Files.list(temp)) { assertEquals(1, files.count()); }
+        try (var files = Files.list(temp)) { assertEquals(1, files.filter(path -> !path.getFileName().toString().equals(".locks")).count()); }
     }
 
     @Test

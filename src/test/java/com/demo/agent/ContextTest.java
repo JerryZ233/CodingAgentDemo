@@ -21,6 +21,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class ContextTest {
 
     @Test
+    void contentRevisionCountsContentChangesButNotPromptOrReadOperations() {
+        Context state = new Context();
+        assertEquals(0, state.getContentRevision());
+        state.addUserMessage("work");
+        assertEquals(1, state.getContentRevision());
+        state.setSystemPrompt("system");
+        state.buildMessagesForLLM();
+        state.getMessages();
+        assertEquals(1, state.getContentRevision());
+        var restored = Context.fromMessages(state.getMessages(), 42);
+        assertEquals(42, restored.getContentRevision());
+        assertEquals(state.getMessages().get(0).getId(), restored.getMessages().get(0).getId());
+        var call = new ToolCall("revision-call", "read_file", "{}");
+        restored.addAssistantToolCalls(null, List.of(call));
+        restored.addToolResult(call, "result");
+        restored.addAssistantMessage("done");
+        assertEquals(45, restored.getContentRevision());
+        restored.clear();
+        assertEquals(46, restored.getContentRevision());
+        restored.clear();
+        assertEquals(46, restored.getContentRevision());
+    }
+
+    @Test
     void restoredContextDefensivelyCopiesHistoryAndDelegatesPersistenceToSessionService() {
         List<Message> history = new ArrayList<>(List.of(Message.user("first")));
         Context restored = Context.fromMessages(history);

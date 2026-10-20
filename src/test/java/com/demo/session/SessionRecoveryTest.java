@@ -57,8 +57,26 @@ class SessionRecoveryTest {
         assertFalse(messages.get(3).getToolSuccess());
         assertEquals(SessionRecovery.UNKNOWN_TOOL_RESULT, messages.get(3).getContent());
         assertEquals(2, result.snapshot().lastRun().iterations());
+        assertEquals(5, result.snapshot().contentRevision());
+        for (int i = 0; i < history.size(); i++) {
+            assertEquals(history.get(i).getId(), messages.get(i).getId());
+        }
+        assertNotEquals(messages.get(3).getId(), messages.get(4).getId());
         assertFalse(recovery.recover(result.snapshot(), now).changed());
         assertEquals(3, history.size());
+    }
+
+    @Test
+    void metadataRecoveryDoesNotDirtyPreviouslyOrganizedContent() {
+        var source = snapshot(List.of(Message.user("work")), SessionRun.started(now));
+        var organized = new SessionSnapshot(source.id(), source.title(), source.workspace(), source.createdAt(),
+                source.updatedAt(), source.messages(), source.lastRun(), false, 10,
+                new com.demo.memory.SessionMemoryState(10, now, com.demo.memory.CompressionState.empty()));
+        var repaired = recovery.recover(organized, now.plusSeconds(1)).snapshot();
+        assertEquals(10, repaired.contentRevision());
+        assertEquals(organized.memoryState(), repaired.memoryState());
+        assertFalse(repaired.dirty());
+        assertEquals(SessionRun.Status.INTERRUPTED, repaired.lastRun().status());
     }
 
     @Test

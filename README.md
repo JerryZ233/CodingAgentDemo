@@ -293,7 +293,7 @@ $env:CODING_AGENT_LOG_LEVEL = "INFO"
 
 ### 文件工具协议
 
-文件工具的结果正文为 JSON；Java `ToolResult` 外层和版本 1 会话格式不变。失败返回稳定的 `code` 与 `message`，不回传被拒绝文件的正文。
+文件工具的结果正文为 JSON；Java `ToolResult` 外层不变，已有版本 1 会话仍可读取。失败返回稳定的 `code` 与 `message`，不回传被拒绝文件的正文。
 
 - `read_file({"path":"a.txt"})`：返回 `path`、完整 `content`、UTF-8 `bytes` 和原始字节的 `sha256`。最多读取 1 MiB，拒绝无效 UTF-8、含 NUL 的二进制和读取期间变化的文件。完整 JSON 超过单条模型消息预算（默认 8,000 个字符）时返回 `FILE_EXCEEDS_MESSAGE_BUDGET`，可改用范围读取。
 - `read_file({"path":"a.txt","start_line":100,"max_lines":80})`：提供任一范围字段即按行读取，起始行默认 1，行数默认 100、最多 1,000。`content` 保留原始换行，不加行号；`bytes` 和 `sha256` 仍针对完整文件。结果包含 `start_line`、`end_line`、`total_lines`、`complete`、`has_more`、`next_start_line` 和 `limited_by`（`max_lines`、`message_budget` 或 `null`）。页面按 JSON 转义后的预算自动缩小；单行也放不下时返回 `LINE_EXCEEDS_MESSAGE_BUDGET`，不拆行。
@@ -394,7 +394,9 @@ CMD 使用 `/d /s /v:off /c`，PowerShell 禁用 profile、非交互并使用 En
 
 可用 `--session-dir` 覆盖存储目录；再次恢复时需要使用同一目录。
 
-每份版本 1 的 JSON 保存会话 ID、标题、固定工作目录、时间、完整消息及最近一轮运行摘要。新会话标题为“新会话”，首次提交后取首条用户任务首行，最多 40 个 Unicode 码点。列表按更新时间倒序排列。
+新保存的会话采用版本 2 JSON，保存会话 ID、标题、固定工作目录、时间、完整消息、最近一轮运行摘要，以及内部消息 ID、内容版本和记忆整理状态。版本 1 会话仍可读取：消息 ID 按会话和序号确定性生成，读取与列目录不重写文件，下次保存时升级到版本 2。新会话标题为“新会话”，首次提交后取首条用户任务首行，最多 40 个 Unicode 码点。列表按更新时间倒序排列。
+
+分层记忆正在按阶段改造，目前完成会话数据、记忆存储和统一上下文组装，默认关闭。设置 `memory.enabled=true`（或 `MEMORY_ENABLED=true`）后，每次模型请求只读加载有效的全局/项目长期条目、校验已提交的连续摘要，并对系统提示、工具 schema 和全部未压缩消息统一估算 Token；超限会暂停并保留原始消息，不静默截断。自动压缩、长期提炼和后台回填尚未实现。接口与限制见 [上下文说明](docs/MEMORY_CONTEXT.md) 和 [存储说明](docs/MEMORY_STORAGE.md)；完整设计与进度见 [实施计划](docs/MEMORY_PLAN.md) 和 [实施进度](docs/MEMORY_PROGRESS.md)。`memory.*` 支持对应的大写环境变量；尚未接入的整理配置暂不执行。
 
 程序不序列化配置中的 API Key、客户端、工具实例或动态系统提示词；但用户消息、代码和工具输出会完整保存，因此其中若包含敏感内容，也会进入会话文件。旧版裸消息 JSON 不会自动导入。
 

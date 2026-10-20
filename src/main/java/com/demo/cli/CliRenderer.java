@@ -79,6 +79,7 @@ public final class CliRenderer {
             case COMMAND_OUTPUT -> "命令输出（任务数据）：\n│ "+((SessionEvent.CommandOutput)event.payload()).text().replace("\n","\n│ ");
             case RUN_STARTED -> null;
             case ITERATION_STARTED -> null;
+            case CONTEXT_PREPARED -> null; // Available to service consumers; do not clutter terminal progress.
             case LLM_REQUEST_STARTED -> "正在请求模型…";
             case LLM_RETRY -> {
                 var failure = ((SessionEvent.ModelFailure) event.payload()).failure();

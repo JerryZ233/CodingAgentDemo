@@ -13,6 +13,22 @@ import static org.junit.jupiter.api.Assertions.*;
 class MessageTest {
 
     @Test
+    void sourceIdentitySurvivesCopiesEditsAndSerialization() {
+        Message original = Message.user("keep public API unchanged");
+        assertEquals(original.getId(), Message.copyOf(original).getId());
+        assertEquals(original.getId(), original.withContent("edited").getId());
+        assertEquals(original.getId(), Message.fromJson(original.toJson()).getId());
+        assertNotEquals(original.getId(), Message.user(original.getContent()).getId());
+        Message legacy = Message.fromJson("{\"role\":\"user\",\"content\":\"old\"}");
+        assertNotNull(legacy.getId());
+        assertEquals(legacy.getId(), Message.copyOf(legacy).getId());
+        for (String invalid : List.of("null", "123", "\"bad\"")) {
+            assertThrows(IllegalArgumentException.class, () -> Message.fromJson(
+                    "{\"id\":" + invalid + ",\"role\":\"user\",\"content\":\"old\"}"));
+        }
+    }
+
+    @Test
     @DisplayName("toJson() produces valid JSON for user message")
     void testToJsonUserMessage() {
         Message message = Message.user("Hello, world!");

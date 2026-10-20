@@ -38,7 +38,9 @@ public final class Config {
     private final RetryPolicy retryPolicy;
     private final boolean errorDetails;
     private final com.demo.tools.process.ShellPolicyConfig shellPolicy;
+    private final MemoryConfig memory;
     public com.demo.tools.process.ShellPolicyConfig getShellPolicy() { return shellPolicy; }
+    public MemoryConfig getMemory() { return memory; }
 
     public Config(
             String apiUrl,
@@ -61,7 +63,17 @@ public final class Config {
     public Config(String apiUrl, String model, String apiKey, int maxTokens, double temperature,
                   int maxIterations, String workspaceDir, Set<String> enabledTools,
                   String provider, RetryPolicy retryPolicy, boolean errorDetails, com.demo.tools.process.ShellPolicyConfig shellPolicy) {
+        this(apiUrl, model, apiKey, maxTokens, temperature, maxIterations, workspaceDir, enabledTools,
+                provider, retryPolicy, errorDetails, shellPolicy, MemoryConfig.defaults());
+    }
+
+    public Config(String apiUrl, String model, String apiKey, int maxTokens, double temperature,
+                  int maxIterations, String workspaceDir, Set<String> enabledTools,
+                  String provider, RetryPolicy retryPolicy, boolean errorDetails,
+                  com.demo.tools.process.ShellPolicyConfig shellPolicy, MemoryConfig memory) {
         this.shellPolicy = Objects.requireNonNull(shellPolicy);
+        this.memory = Objects.requireNonNull(memory, "memory");
+        if (memory.enabled()) memory.inputBudgetTokens(maxTokens);
         this.apiUrl = requireText(apiUrl, "apiUrl");
         this.model = requireText(model, "model");
         this.apiKey = apiKey == null ? "" : apiKey;
@@ -75,6 +87,11 @@ public final class Config {
         this.provider = LLMProvider.parse(provider).name().toLowerCase(java.util.Locale.ROOT);
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
         this.errorDetails = errorDetails;
+    }
+
+    public Config withMemory(MemoryConfig settings) {
+        return new Config(apiUrl, model, apiKey, maxTokens, temperature, maxIterations, workspaceDir,
+                enabledTools, provider, retryPolicy, errorDetails, shellPolicy, settings);
     }
 
     public String getProvider() { return provider; }

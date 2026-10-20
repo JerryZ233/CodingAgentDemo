@@ -73,8 +73,66 @@ public final class ConfigLoader {
                 parseInt("llm.retry_initial_delay_ms", getEnvOrYaml(env, "LLM_RETRY_INITIAL_DELAY_MS", "llm.retry_initial_delay_ms", "2000", config)),
                 parseInt("llm.retry_max_delay_ms", getEnvOrYaml(env, "LLM_RETRY_MAX_DELAY_MS", "llm.retry_max_delay_ms", "30000", config))),
             parseBoolean("llm.error_details", getEnvOrYaml(env, "LLM_ERROR_DETAILS", "llm.error_details", "false", config)),
-            loadShellPolicy(config)
+            loadShellPolicy(config),
+            loadMemory(config, env)
         );
+    }
+
+    private static MemoryConfig loadMemory(Map<String, Object> config, Map<String, String> env) {
+        validateMemoryMap(config.get("memory"), Set.of("enabled", "context_window_tokens", "safety_margin_tokens",
+                "compact_trigger_ratio", "compact_target_ratio", "global_budget_tokens", "project_budget_tokens",
+                "summary_budget_tokens", "retain_recent_blocks", "consolidation", "maintenance"), "memory");
+        if (config.get("memory") instanceof Map<?, ?> memory) {
+            validateMemoryMap(memory.get("consolidation"), Set.of("enabled", "new_history_threshold", "batch_size"),
+                    "memory.consolidation");
+            validateMemoryMap(memory.get("maintenance"), Set.of("enabled", "min_interval_hours", "scan_interval_seconds"),
+                    "memory.maintenance");
+        }
+        var d = MemoryConfig.defaults();
+        return new MemoryConfig(memoryBoolean(config, env, "enabled", d.enabled()),
+                memoryInt(config, env, "context_window_tokens", d.contextWindowTokens()),
+                memoryInt(config, env, "safety_margin_tokens", d.safetyMarginTokens()),
+                memoryDouble(config, env, "compact_trigger_ratio", d.compactTriggerRatio()),
+                memoryDouble(config, env, "compact_target_ratio", d.compactTargetRatio()),
+                memoryInt(config, env, "global_budget_tokens", d.globalBudgetTokens()),
+                memoryInt(config, env, "project_budget_tokens", d.projectBudgetTokens()),
+                memoryInt(config, env, "summary_budget_tokens", d.summaryBudgetTokens()),
+                memoryInt(config, env, "retain_recent_blocks", d.retainRecentBlocks()),
+                new MemoryConfig.Consolidation(
+                        memoryBoolean(config, env, "consolidation.enabled", d.consolidation().enabled()),
+                        memoryInt(config, env, "consolidation.new_history_threshold", d.consolidation().newHistoryThreshold()),
+                        memoryInt(config, env, "consolidation.batch_size", d.consolidation().batchSize())),
+                new MemoryConfig.Maintenance(
+                        memoryBoolean(config, env, "maintenance.enabled", d.maintenance().enabled()),
+                        memoryInt(config, env, "maintenance.min_interval_hours", d.maintenance().minIntervalHours()),
+                        memoryInt(config, env, "maintenance.scan_interval_seconds", d.maintenance().scanIntervalSeconds())));
+    }
+
+    private static void validateMemoryMap(Object value, Set<String> keys, String prefix) {
+        if (value == null) return;
+        if (!(value instanceof Map<?, ?> map)) throw new IllegalArgumentException(prefix + " must be a mapping");
+        for (Object key : map.keySet()) {
+            if (!keys.contains(key)) throw new IllegalArgumentException("Unknown " + prefix + " field: " + key);
+            if (map.get(key) == null) throw new IllegalArgumentException(prefix + "." + key + " must not be null");
+        }
+    }
+
+    private static String memoryValue(Map<String, Object> config, Map<String, String> env, String suffix, Object fallback) {
+        String key = "memory." + suffix;
+        String variable = key.toUpperCase(java.util.Locale.ROOT).replace('.', '_');
+        return getEnvOrYaml(env, variable, key, String.valueOf(fallback), config);
+    }
+
+    private static int memoryInt(Map<String, Object> config, Map<String, String> env, String suffix, int fallback) {
+        return parseInt("memory." + suffix, memoryValue(config, env, suffix, fallback));
+    }
+
+    private static double memoryDouble(Map<String, Object> config, Map<String, String> env, String suffix, double fallback) {
+        return parseDouble("memory." + suffix, memoryValue(config, env, suffix, fallback));
+    }
+
+    private static boolean memoryBoolean(Map<String, Object> config, Map<String, String> env, String suffix, boolean fallback) {
+        return parseBoolean("memory." + suffix, memoryValue(config, env, suffix, fallback));
     }
 
     private static com.demo.tools.process.ShellPolicyConfig loadShellPolicy(Map<String,Object> config) {

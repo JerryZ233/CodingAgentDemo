@@ -10,6 +10,7 @@ public class AgentRunResult {
         LLM_ERROR,
         MAX_ITERATIONS,
         TOOL_ERROR,
+        CONTEXT_BLOCKED,
         CANCELLED
     }
 
@@ -53,6 +54,10 @@ public class AgentRunResult {
 
     public static AgentRunResult toolError(String message, int iterations) {
         return new AgentRunResult(Status.TOOL_ERROR, message, iterations);
+    }
+
+    public static AgentRunResult contextBlocked(String message, int iterations) {
+        return new AgentRunResult(Status.CONTEXT_BLOCKED, message, iterations);
     }
 
     public static AgentRunResult cancelled(int iterations) {

@@ -3,9 +3,9 @@ package com.demo.session.storage;
 import com.demo.session.SessionCatalog;
 import com.demo.session.SessionSnapshot;
 import com.demo.session.SessionSummary;
+import com.demo.storage.StorageFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
@@ -32,6 +32,29 @@ public class JsonSessionRepository implements SessionRepository {
 
     @Override
     public void save(SessionSnapshot snapshot) {
+        pathFor(snapshot.id());
+        try (var lock = new StorageFiles(directory).lock(".locks/" + snapshot.id() + ".lck")) {
+            saveLocked(snapshot);
+        } catch (StorageFiles.BusyException busy) {
+            throw new SessionStorageException(SessionStorageException.Reason.CONFLICT, "Session checkpoint is busy", busy);
+        } catch (IOException | SecurityException failure) { throw ioFailure("lock", snapshot.id(), failure); }
+    }
+
+    @Override
+    public void compareAndSave(SessionSnapshot expected, SessionSnapshot replacement) {
+        if (!expected.id().equals(replacement.id())) throw new IllegalArgumentException("Session identity changed");
+        pathFor(expected.id());
+        try (var lock = new StorageFiles(directory).lock(".locks/" + expected.id() + ".lck")) {
+            if (!load(expected.id()).samePersistedState(expected)) {
+                throw new SessionStorageException(SessionStorageException.Reason.CONFLICT, "Session changed before archive commit");
+            }
+            saveLocked(replacement);
+        } catch (StorageFiles.BusyException busy) {
+            throw new SessionStorageException(SessionStorageException.Reason.CONFLICT, "Session checkpoint is busy", busy);
+        } catch (IOException | SecurityException failure) { throw ioFailure("conditional save", expected.id(), failure); }
+    }
+
+    private void saveLocked(SessionSnapshot snapshot) {
         Path target = pathFor(snapshot.id());
         Path temporary = null;
         try {
@@ -39,7 +62,11 @@ public class JsonSessionRepository implements SessionRepository {
             if (Files.isSymbolicLink(target)) throw new IOException("Symbolic link target");
             String document = codec.encode(snapshot);
             temporary = Files.createTempFile(directory, snapshot.id() + "-", ".tmp");
-            Files.writeString(temporary, document, StandardCharsets.UTF_8);
+            try (var channel = java.nio.channels.FileChannel.open(temporary, java.nio.file.StandardOpenOption.WRITE)) {
+                var buffer = java.nio.ByteBuffer.wrap(document.getBytes(StandardCharsets.UTF_8));
+                while (buffer.hasRemaining()) channel.write(buffer);
+                channel.force(true);
+            }
             moveIntoPlace(temporary, target);
         } catch (IOException | SecurityException e) {
             throw ioFailure("save", snapshot.id(), e);
@@ -52,11 +79,7 @@ public class JsonSessionRepository implements SessionRepository {
 
     /** Separated for deterministic write-failure tests. */
     protected void moveIntoPlace(Path temporary, Path target) throws IOException {
-        try {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     @Override

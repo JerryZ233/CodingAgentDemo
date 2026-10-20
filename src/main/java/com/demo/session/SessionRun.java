@@ -9,7 +9,7 @@ import java.util.UUID;
 public record SessionRun(String id, Instant startedAt, Instant endedAt, Status status,
                          int iterations, String message) {
     public enum Status {
-        RUNNING, CANCELLING, CANCELLED, COMPLETED, LLM_ERROR, MAX_ITERATIONS, TOOL_ERROR, FAILED, INTERRUPTED, STORAGE_ERROR
+        RUNNING, CANCELLING, CANCELLED, COMPLETED, LLM_ERROR, MAX_ITERATIONS, TOOL_ERROR, CONTEXT_BLOCKED, FAILED, INTERRUPTED, STORAGE_ERROR
     }
 
     public SessionRun {

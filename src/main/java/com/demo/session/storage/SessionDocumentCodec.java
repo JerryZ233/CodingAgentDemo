@@ -2,6 +2,8 @@ package com.demo.session.storage;
 
 import com.demo.model.Message;
 import com.demo.model.ToolCall;
+import com.demo.memory.CompressionState;
+import com.demo.memory.SessionMemoryState;
 import com.demo.session.SessionRun;
 import com.demo.session.SessionSnapshot;
 import com.google.gson.Gson;
@@ -11,16 +13,18 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Explicit wire format: no reflective Instant/Path adapters or executable runtime objects. */
 final class SessionDocumentCodec {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     String encode(SessionSnapshot snapshot) {
         JsonArray messages = new JsonArray();
@@ -31,7 +35,10 @@ final class SessionDocumentCodec {
                 run.iterations(), run.message());
         String json = GSON.toJson(new SessionDocument(VERSION, snapshot.id(), snapshot.title(),
                 snapshot.workspace().toString(), snapshot.createdAt().toString(),
-                snapshot.updatedAt().toString(), messages, runDocument));
+                snapshot.updatedAt().toString(), messages, runDocument, snapshot.contentRevision(),
+                new MemoryDocument(snapshot.memoryState().lastOrganizedRevision(),
+                        snapshot.memoryState().lastOrganizedAt() == null ? null : snapshot.memoryState().lastOrganizedAt().toString(),
+                        snapshot.memoryState().compression())));
         decode(json); // Never replace a good checkpoint with a document we cannot restore.
         return json;
     }
@@ -39,11 +46,14 @@ final class SessionDocumentCodec {
     SessionSnapshot decode(String json) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            if (integer(root, "schemaVersion") != VERSION) {
+            int version = integer(root, "schemaVersion");
+            if (version != 1 && version != VERSION) {
                 throw new SessionStorageException(SessionStorageException.Reason.UNSUPPORTED_VERSION,
                         "Unsupported session schema version");
             }
-            List<Message> messages = decodeMessages(root.getAsJsonArray("messages"));
+            String sessionId = text(root, "id", false);
+            SessionSnapshot.requireId(sessionId);
+            List<Message> messages = decodeMessages(root.getAsJsonArray("messages"), sessionId, version);
             JsonObject run = root.has("lastRun") && !root.get("lastRun").isJsonNull()
                     ? root.getAsJsonObject("lastRun") : null;
             SessionRun lastRun = run == null ? null : new SessionRun(text(run, "id", false),
@@ -60,8 +70,10 @@ final class SessionDocumentCodec {
                     || (lastRun.endedAt() != null && lastRun.endedAt().isAfter(updated)))) {
                 throw new IllegalArgumentException("Run timestamps are outside session lifetime");
             }
-            return new SessionSnapshot(text(root, "id", false), text(root, "title", false),
-                    Path.of(text(root, "workspace", false)), created, updated, messages, lastRun, false);
+            SessionMemoryState memory = version == 1 ? SessionMemoryState.empty() : decodeMemory(root);
+            long revision = version == 1 ? messages.size() : longInteger(root, "contentRevision");
+            return new SessionSnapshot(sessionId, text(root, "title", false),
+                    Path.of(text(root, "workspace", false)), created, updated, messages, lastRun, false, revision, memory);
         } catch (SessionStorageException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -71,7 +83,7 @@ final class SessionDocumentCodec {
         }
     }
 
-    private List<Message> decodeMessages(JsonArray array) {
+    private List<Message> decodeMessages(JsonArray array, String sessionId, int version) {
         if (array == null) throw new IllegalArgumentException("Missing messages");
         List<Message> messages = new ArrayList<>();
         Map<String, String> pending = new LinkedHashMap<>();
@@ -129,10 +141,26 @@ final class SessionDocumentCodec {
                 }
                 default -> throw new IllegalArgumentException("Unsupported role");
             }
-            messages.add(message);
+            String messageId = version == 1
+                    ? UUID.nameUUIDFromBytes(("coding-agent:v1:" + sessionId + ":" + messages.size())
+                            .getBytes(StandardCharsets.UTF_8)).toString()
+                    : text(object, "id", false);
+            messages.add(message.withId(messageId));
         }
         // An unfinished final tool block is legal on disk and is repaired on restore.
         return messages;
+    }
+
+    private SessionMemoryState decodeMemory(JsonObject root) {
+        JsonObject memory = root.getAsJsonObject("memoryState");
+        if (memory == null) throw new IllegalArgumentException("Missing memoryState");
+        JsonObject compression = memory.getAsJsonObject("compression");
+        if (compression == null) throw new IllegalArgumentException("Missing compression state");
+        return new SessionMemoryState(longInteger(memory, "lastOrganizedRevision"),
+                instantOrNull(memory, "lastOrganizedAt"),
+                new CompressionState(text(compression, "coveredThroughMessageId", true),
+                        text(compression, "historyId", true), text(compression, "continuationSummary", false),
+                        longInteger(compression, "version")));
     }
 
     private static String text(JsonObject object, String name, boolean nullable) {
@@ -154,11 +182,15 @@ final class SessionDocumentCodec {
     }
 
     private static int integer(JsonObject object, String name) {
+        return Math.toIntExact(longInteger(object, name));
+    }
+
+    private static long longInteger(JsonObject object, String name) {
         JsonElement value = object.get(name);
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
             throw new IllegalArgumentException("Expected integer: " + name);
         }
-        return value.getAsBigDecimal().intValueExact();
+        return value.getAsBigDecimal().longValueExact();
     }
 
     private static Boolean booleanOrNull(JsonObject object, String name) {
@@ -176,7 +208,10 @@ final class SessionDocumentCodec {
     }
 
     private record SessionDocument(int schemaVersion, String id, String title, String workspace,
-                                   String createdAt, String updatedAt, JsonArray messages, RunDocument lastRun) { }
+                                   String createdAt, String updatedAt, JsonArray messages, RunDocument lastRun,
+                                   long contentRevision, MemoryDocument memoryState) { }
+    private record MemoryDocument(long lastOrganizedRevision, String lastOrganizedAt,
+                                  CompressionState compression) { }
     private record RunDocument(String id, String startedAt, String endedAt, String status,
                                int iterations, String message) { }
 }

@@ -62,9 +62,10 @@ public class AgentLoop {
                 try (var iterationScope = org.apache.logging.log4j.CloseableThreadContext.put("iteration", String.valueOf(current))) {
                     observer.onIterationStarted(iteration);
                     events.append(AgentEvent.iterationStarted(iteration));
-                    var messages = context.buildMessagesForLLM();
+                    var input = context.prepareForLLM(token);
+                    input.budget().ifPresent(report -> events.append(AgentEvent.contextPrepared(current, report)));
                     token.runIfActive(() -> events.append(AgentEvent.llmRequestStarted(current)));
-                    LLMClient.LLMResponse response = llmClient.sendMessage(messages, context.getToolDescriptions(), token,
+                    LLMClient.LLMResponse response = llmClient.sendMessage(input.messages(), input.toolsDescription(), token,
                             failure -> token.runIfActive(() -> events.append(AgentEvent.llmRetry(current, failure))));
                     token.throwIfCancellationRequested();
                     if (response == null || response.isError()) {
@@ -105,6 +106,12 @@ public class AgentLoop {
             observer.onMaxIterations(error);
             events.append(AgentEvent.maxIterations(maxIterations, error));
             return complete(AgentRunResult.maxIterations(error, maxIterations), events);
+        } catch (com.demo.memory.ContextBlockedException blocked) {
+            if (token.isCancellationRequested()) return complete(AgentRunResult.cancelled(iteration), events);
+            checkpoint.save(context, iteration);
+            com.demo.logging.Logging.logger(AgentLoop.class).warn("Context preparation blocked reason={} budget={}",
+                    blocked.reason(), blocked.report().orElse(null));
+            return complete(AgentRunResult.contextBlocked(blocked.getMessage(), iteration), events);
         } catch (com.demo.tools.process.ShellExecutionException fatal) {
             Map<String, ToolCall> pending = new LinkedHashMap<>();
             for (Message message : context.getMessages()) {

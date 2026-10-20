@@ -49,12 +49,17 @@ class SessionServiceTest {
             assertEquals(temp.toRealPath(), empty.workspace());
             assertNull(empty.lastRun());
             assertFalse(empty.unsaved());
+            assertEquals(0, empty.contentRevision());
             String first = "😀".repeat(45) + "\nsecond line";
             var firstTurn = service.runTurn(empty.id(), first);
             assertEquals("😀".repeat(40), firstTurn.title());
             assertEquals(SessionRun.Status.COMPLETED, firstTurn.lastRun().status());
+            assertEquals(2, firstTurn.contentRevision());
             var second = service.runTurn(empty.id(), "again");
             assertEquals(4, second.messages().size());
+            assertEquals(4, second.contentRevision());
+            assertEquals(second.contentRevision(), repository.load(empty.id()).contentRevision());
+            assertEquals(firstTurn.messages().get(0).getId(), second.messages().get(0).getId());
             assertEquals(firstTurn.title(), second.title());
             assertEquals(0, empty.messages().size());
             assertEquals(2, firstTurn.messages().size());

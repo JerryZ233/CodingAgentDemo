@@ -2,6 +2,7 @@ package com.demo.model;
 
 import com.google.gson.Gson;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Represents a message in the conversation with the LLM.
@@ -13,6 +14,7 @@ import java.util.List;
 public class Message {
     
     private static final Gson GSON = new Gson();
+    private final String id;
     
     private final String role;      // "user", "assistant", "system", or "tool"
     private final String content;   // The actual message text
@@ -32,6 +34,13 @@ public class Message {
 
     private Message(String role, String content, List<ToolCall> toolCalls, String toolCallId, String toolName,
             Boolean toolSuccess, String toolError) {
+        this(UUID.randomUUID().toString(), role, content, toolCalls, toolCallId, toolName, toolSuccess, toolError);
+    }
+
+    private Message(String id, String role, String content, List<ToolCall> toolCalls, String toolCallId,
+                    String toolName, Boolean toolSuccess, String toolError) {
+        requireId(id);
+        this.id = id;
         this.role = role;
         this.content = content;
         this.toolCalls = toolCalls == null ? null : List.copyOf(toolCalls);
@@ -39,6 +48,19 @@ public class Message {
         this.toolName = toolName;
         this.toolSuccess = toolSuccess;
         this.toolError = toolError;
+    }
+
+    /** Internal source identity; deliberately omitted by the LLM protocol mapper. */
+    public String getId() { return id; }
+
+    public Message withId(String sourceId) {
+        return new Message(sourceId, role, content, toolCalls, toolCallId, toolName, toolSuccess, toolError);
+    }
+
+    public static void requireId(String value) {
+        if (value == null || !UUID.fromString(value).toString().equals(value)) {
+            throw new IllegalArgumentException("Message ID must be a canonical UUID");
+        }
     }
     
     public String getRole() {
@@ -70,14 +92,15 @@ public class Message {
     }
 
     public Message withContent(String newContent) {
-        return new Message(role, newContent, toolCalls, toolCallId, toolName, toolSuccess, toolError);
+        return new Message(id, role, newContent, toolCalls, toolCallId, toolName, toolSuccess, toolError);
     }
 
     /** Rebuilds even Gson-created messages so their nested lists cannot remain mutable. */
     public static Message copyOf(Message message) {
         List<ToolCall> calls = message.toolCalls == null ? null : message.toolCalls.stream()
                 .map(call -> new ToolCall(call.getId(), call.getToolName(), call.getArguments())).toList();
-        return new Message(message.role, message.content, calls, message.toolCallId,
+        return new Message(message.id == null ? UUID.randomUUID().toString() : message.id,
+                message.role, message.content, calls, message.toolCallId,
                 message.toolName, message.toolSuccess, message.toolError);
     }
     
@@ -139,7 +162,15 @@ public class Message {
             if (message == null || message.role == null || message.role.isEmpty() || message.content == null) {
                 throw new IllegalArgumentException("Message JSON is missing required fields");
             }
-            return message;
+            var root = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            if (root.has("id")) {
+                var value = root.get("id");
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException("Message ID must be a string");
+                }
+                requireId(message.id);
+            }
+            return copyOf(message);
         } catch (Exception e) {
             if (e instanceof IllegalArgumentException) {
                 throw e;

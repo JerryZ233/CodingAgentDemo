@@ -49,8 +49,8 @@ class SessionDocumentCodecTest {
 
     @Test
     void defensiveSnapshotCopyAlsoRepairsGsonCreatedMessageLists() {
-        Message deserialized = Message.fromJson("{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":["
-                + "{\"id\":\"a\",\"toolName\":\"read_file\",\"arguments\":\"{}\"}]}");
+        Message deserialized = new com.google.gson.Gson().fromJson("{\"role\":\"assistant\",\"content\":\"\",\"toolCalls\":["
+                + "{\"id\":\"a\",\"toolName\":\"read_file\",\"arguments\":\"{}\"}]}", Message.class);
         SessionSnapshot base = fixture();
         SessionSnapshot copy = new SessionSnapshot(base.id(), base.title(), base.workspace(), base.createdAt(),
                 base.updatedAt(), List.of(deserialized), base.lastRun(), false);
@@ -84,7 +84,7 @@ class SessionDocumentCodecTest {
     @Test
     void validatesVersionNumbersTypesAndTimeRanges() {
         JsonObject root = JsonParser.parseString(codec.encode(fixture())).getAsJsonObject();
-        root.addProperty("schemaVersion", 2);
+        root.addProperty("schemaVersion", 3);
         assertEquals(SessionStorageException.Reason.UNSUPPORTED_VERSION,
                 assertThrows(SessionStorageException.class, () -> codec.decode(root.toString())).getReason());
         root.addProperty("schemaVersion", 1.1);
@@ -96,6 +96,83 @@ class SessionDocumentCodecTest {
         assertThrows(SessionStorageException.class, () -> codec.decode(root.toString()));
         root.addProperty("createdAt", "2027-01-01T00:00:00Z");
         assertThrows(SessionStorageException.class, () -> codec.decode(root.toString()));
+    }
+
+    @Test
+    void legacyIdsAreDeterministicAndUpgradeOnlyOnEncode() {
+        JsonObject legacy = JsonParser.parseString(codec.encode(fixture())).getAsJsonObject();
+        legacy.addProperty("schemaVersion", 1);
+        legacy.remove("contentRevision");
+        legacy.remove("memoryState");
+        legacy.getAsJsonArray("messages").forEach(item -> item.getAsJsonObject().remove("id"));
+        String original = legacy.toString();
+        var first = codec.decode(original);
+        var second = codec.decode(original);
+        assertEquals(first.messages().stream().map(Message::getId).toList(),
+                second.messages().stream().map(Message::getId).toList());
+        assertEquals(first.messages().size(), first.contentRevision());
+        assertNull(first.memoryState().lastOrganizedAt());
+        assertTrue(first.dirty());
+        assertEquals(original, legacy.toString());
+        var upgraded = JsonParser.parseString(codec.encode(first)).getAsJsonObject();
+        assertEquals(2, upgraded.get("schemaVersion").getAsInt());
+        var restored = codec.decode(upgraded.toString());
+        assertEquals(first.messages().stream().map(Message::getId).toList(),
+                restored.messages().stream().map(Message::getId).toList());
+        assertEquals(first.memoryState(), restored.memoryState());
+        legacy.addProperty("id", UUID.randomUUID().toString());
+        assertNotEquals(first.messages().get(0).getId(), codec.decode(legacy.toString()).messages().get(0).getId());
+    }
+
+    @Test
+    void organizedStateAndCompressionSurviveRoundTrip() {
+        var base = fixture();
+        var compression = new com.demo.memory.CompressionState(base.messages().get(2).getId(),
+                "history-1", "Keep the public API unchanged.", 1);
+        var state = new com.demo.memory.SessionMemoryState(base.contentRevision(), base.updatedAt(), compression);
+        var organized = new SessionSnapshot(base.id(), base.title(), base.workspace(), base.createdAt(),
+                base.updatedAt(), base.messages(), base.lastRun(), false, base.contentRevision(), state);
+        var result = codec.decode(codec.encode(organized));
+        assertEquals(state, result.memoryState());
+        assertEquals(3, result.memoryState().compression().coveredCount(result.messages()));
+        assertFalse(result.dirty());
+    }
+
+    @Test
+    void rejectsInvalidV2IdsRevisionsAndCompressionBoundaries() {
+        for (String mutation : List.of("missingId", "duplicateId", "invalidId", "missingRevision", "negativeRevision",
+                "fractionalRevision", "overflowRevision", "missingState", "futureOrganizedRevision",
+                "unknownBoundary", "splitToolBlock", "futureTime")) {
+            var root = JsonParser.parseString(codec.encode(fixture())).getAsJsonObject();
+            var messages = root.getAsJsonArray("messages");
+            var memory = root.getAsJsonObject("memoryState");
+            switch (mutation) {
+                case "missingId" -> messages.get(0).getAsJsonObject().remove("id");
+                case "duplicateId" -> messages.get(1).getAsJsonObject().add("id", messages.get(0).getAsJsonObject().get("id"));
+                case "invalidId" -> messages.get(0).getAsJsonObject().addProperty("id", "not-a-uuid");
+                case "missingRevision" -> root.remove("contentRevision");
+                case "negativeRevision" -> root.addProperty("contentRevision", -1);
+                case "fractionalRevision" -> root.addProperty("contentRevision", 4.5);
+                case "overflowRevision" -> root.addProperty("contentRevision", new java.math.BigInteger("9223372036854775808"));
+                case "missingState" -> root.remove("memoryState");
+                case "futureOrganizedRevision" -> {
+                    memory.addProperty("lastOrganizedRevision", 100);
+                    memory.add("lastOrganizedAt", root.get("updatedAt"));
+                }
+                case "futureTime" -> memory.addProperty("lastOrganizedAt", "2099-01-01T00:00:00Z");
+                case "unknownBoundary", "splitToolBlock" -> {
+                    memory.add("lastOrganizedAt", root.get("updatedAt"));
+                    var compression = memory.getAsJsonObject("compression");
+                    compression.addProperty("version", 1);
+                    compression.addProperty("historyId", "history-1");
+                    compression.addProperty("continuationSummary", "Summary");
+                    compression.addProperty("coveredThroughMessageId", mutation.equals("unknownBoundary")
+                            ? UUID.randomUUID().toString() : messages.get(1).getAsJsonObject().get("id").getAsString());
+                }
+            }
+            var error = assertThrows(SessionStorageException.class, () -> codec.decode(root.toString()), mutation);
+            assertEquals(SessionStorageException.Reason.MALFORMED_DATA, error.getReason(), mutation);
+        }
     }
 
     @Test

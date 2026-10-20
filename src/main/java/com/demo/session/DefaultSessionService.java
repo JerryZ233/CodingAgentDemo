@@ -41,6 +41,7 @@ public final class DefaultSessionService implements SessionService {
     private final Clock clock;
     private final ExecutorService executor;
     private final Duration closeTimeout;
+    private final com.demo.memory.MemoryHarness memoryHarness;
     private final WorkspaceResolver workspaces = new WorkspaceResolver();
     private final SessionRecovery recovery = new SessionRecovery();
     private final Map<String, Session> sessions = new java.util.concurrent.ConcurrentHashMap<>();
@@ -67,14 +68,30 @@ public final class DefaultSessionService implements SessionService {
     }
     public DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
                                  ClientOwnership ownership) {
-        this(config, client, repository, clock, ownership, Executors.newSingleThreadExecutor(task -> {
+        this(config, client, repository, clock, ownership, newExecutor(), Duration.ofSeconds(5));
+    }
+
+    /** Explicit harness injection isolates global memory in tests and embedded applications. */
+    public DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
+                                 ClientOwnership ownership, com.demo.memory.MemoryHarness memoryHarness) {
+        this(config, client, repository, clock, ownership, newExecutor(), Duration.ofSeconds(5), memoryHarness);
+    }
+
+    private static ExecutorService newExecutor() {
+        return Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(task, "coding-agent-runner");
             thread.setDaemon(false);
             return thread;
-        }), Duration.ofSeconds(5));
+        });
     }
     DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
                           ClientOwnership ownership, ExecutorService executor, Duration closeTimeout) {
+        this(config, client, repository, clock, ownership, executor, closeTimeout, null);
+    }
+
+    private DefaultSessionService(Config config, LLMClient client, SessionRepository repository, Clock clock,
+                          ClientOwnership ownership, ExecutorService executor, Duration closeTimeout,
+                          com.demo.memory.MemoryHarness memoryHarness) {
         this.config = Objects.requireNonNull(config);
         com.demo.logging.LogData.registerSecret(config.getApiKey());
         this.client = Objects.requireNonNull(client);
@@ -83,6 +100,9 @@ public final class DefaultSessionService implements SessionService {
         this.ownership = Objects.requireNonNull(ownership);
         this.executor = Objects.requireNonNull(executor);
         this.closeTimeout = Objects.requireNonNull(closeTimeout);
+        this.memoryHarness = !config.getMemory().enabled() ? null : memoryHarness != null ? memoryHarness
+                : new com.demo.memory.MemoryHarness(config.getMemory(), config.getMaxTokens(),
+                        com.demo.memory.MemoryHarness.defaultGlobalDirectory());
         if (config.getMaxIterations() <= 0 || closeTimeout.isNegative() || closeTimeout.isZero()) {
             throw new IllegalArgumentException("Iteration limit and close timeout must be positive");
         }
@@ -189,6 +209,8 @@ public final class DefaultSessionService implements SessionService {
         if (log.isDebugEnabled()) log.debug("User message text={}", com.demo.logging.LogData.quote(message));
         worker = Thread.currentThread();
         Throwable failure = null;
+        if (memoryHarness != null) session.context.setPreparation(memoryHarness.preparation(
+                session.id, session.workspace, () -> session.memoryState));
         if (session.context.getMessages().isEmpty()) session.title = titleFor(message);
         session.lastRun = SessionRun.started(run.runId(), now(session));
         session.context.addUserMessage(message);

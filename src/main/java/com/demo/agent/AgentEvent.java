@@ -13,6 +13,7 @@ public class AgentEvent {
     public enum Type {
         RUN_STARTED,
         ITERATION_STARTED,
+        CONTEXT_PREPARED,
         LLM_REQUEST_STARTED,
         LLM_RETRY,
         LLM_RESPONSE,
@@ -35,6 +36,15 @@ public class AgentEvent {
     private ToolResult toolResult;
     private boolean finalResponse;
     private com.demo.llm.LLMFailure failure;
+    private com.demo.memory.ContextBudget.Report contextBudget;
+
+    public com.demo.memory.ContextBudget.Report getContextBudget() { return contextBudget; }
+
+    public static AgentEvent contextPrepared(int iteration, com.demo.memory.ContextBudget.Report report) {
+        AgentEvent event = new AgentEvent(Type.CONTEXT_PREPARED, iteration, null, null, null);
+        event.contextBudget = Objects.requireNonNull(report);
+        return event;
+    }
 
     public com.demo.llm.LLMFailure getFailure() { return failure; }
 

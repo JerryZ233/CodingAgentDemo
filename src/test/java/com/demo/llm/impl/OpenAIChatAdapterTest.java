@@ -55,6 +55,15 @@ class OpenAIChatAdapterTest {
     }
 
     @Test
+    void internalMessageIdentityDoesNotEnterProviderFields() {
+        var user = Message.user("hello");
+        var request = adapter.buildRequest(List.of(user), null, "model", 10, 0);
+        assertFalse(request.messages().get(0).asUser()._additionalProperties().containsKey("id"));
+        assertFalse(request._additionalBodyProperties().containsKey("id"));
+        assertEquals("hello", request.messages().get(0).asUser().content().asText());
+    }
+
+    @Test
     void preservesEmptyAssistantContent() {
         var params = adapter.buildRequest(List.of(Message.assistant("")), null, "model", 10, 0);
         assertEquals("", params.messages().get(0).asAssistant().content().orElseThrow().asText());
